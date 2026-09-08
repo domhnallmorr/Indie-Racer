@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "type": "vehicle",
+  "id": "open_wheel",
+  "display_name": "Open Wheel 95 — Oval",
+  "description": "Low-poly mid-1990s inspired single-seater with shallow oval wings and basic kinematic driving.",
+  "scene": "scenes/vehicle.tscn",
+  "units": "metres",
+  "visual_only": false,
+  "wheelbase_m": 2.82
+}

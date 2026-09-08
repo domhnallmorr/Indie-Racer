@@ -1,0 +1,16 @@
+[gd_scene format=3 uid="uid://baul6f47f8teh"]
+
+[ext_resource type="PackedScene" uid="uid://bu7hi8xdw7loh" path="res://content/tracks/mile_oval/models/mile_oval.glb" id="1"]
+[ext_resource type="Script" uid="uid://cgtfgslr2m7p3" path="res://content/tracks/mile_oval/grandstands/grandstands.gd" id="2"]
+
+[node name="MileOval" type="Node3D" unique_id=1582581415]
+metadata/units = "metres"
+metadata/reference_length_m = 1609.344
+
+[node name="Geometry" parent="." unique_id=2020894780 instance=ExtResource("1")]
+
+[node name="Grandstands" type="Node3D" parent="." unique_id=230727647]
+script = ExtResource("2")
+
+[node name="PlayerSpawn" type="Marker3D" parent="." unique_id=1998729533]
+transform = Transform3D(7.54979e-08, 0, -1, 0, 1, 0, 1, 0, 7.54979e-08, 51.79594, 0.6, 129)

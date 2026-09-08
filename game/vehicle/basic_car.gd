@@ -1,0 +1,110 @@
+extends CharacterBody3D
+## Starter kinematic handling in SI units. No tyre/suspension simulation yet.
+@export var acceleration_mps2 := 8.0
+@export var braking_mps2 := 18.0
+@export var coasting_drag_mps2 := 1.5
+@export var max_speed_kph := 280.0
+@export var reverse_speed_kph := 20.0
+@export var wheelbase_m := 2.82
+@export_range(0.0, 0.2, 0.01) var max_surface_step_m := 0.15
+var speed_mps := 0.0
+var driving_enabled := false
+var track_data
+var track: Node3D
+var player_state: Node
+
+func _ready() -> void:
+	floor_snap_length = .8
+	floor_max_angle = deg_to_rad(50)
+	floor_constant_speed = true
+	for mapping in [["drive_accelerate", KEY_W], ["drive_brake", KEY_S], ["drive_left", KEY_A], ["drive_right", KEY_D]]:
+		if not InputMap.has_action(mapping[0]):
+			InputMap.add_action(mapping[0])
+			var key := InputEventKey.new()
+			key.physical_keycode = mapping[1]
+			InputMap.action_add_event(mapping[0], key)
+
+func _physics_process(delta: float) -> void:
+	if driving_enabled:
+		drive_step(delta, Input.get_action_strength("drive_accelerate"), Input.get_action_strength("drive_brake"), Input.get_axis("drive_right", "drive_left"))
+
+func update_zone_state() -> void:
+	var local := track.to_local(global_position)
+	player_state.set_in_pit_lane(track_data.contains_pit_lane(local))
+	player_state.is_in_pit_speed_zone = track_data.contains_speed_limit_zone(local)
+
+func drive_step(delta: float, throttle: float, brake: float, steering: float) -> void:
+	update_zone_state()
+	if brake > 0:
+		if speed_mps > .1:
+			speed_mps = move_toward(speed_mps, 0, braking_mps2 * brake * delta)
+		else:
+			speed_mps = move_toward(speed_mps, -reverse_speed_kph / 3.6, acceleration_mps2 * brake * delta)
+	elif throttle > 0:
+		speed_mps = move_toward(speed_mps, max_speed_kph / 3.6, (braking_mps2 if speed_mps < 0 else acceleration_mps2) * throttle * delta)
+	else:
+		speed_mps = move_toward(speed_mps, 0, coasting_drag_mps2 * delta)
+	_apply_limit()
+	# Reduce steering lock with speed so keyboard taps remain manageable.
+	var lock := lerpf(28.0, 3.5, clampf(absf(speed_mps) / 55.0, 0, 1))
+	var yaw_rate := speed_mps / wheelbase_m * tan(deg_to_rad(lock)) * steering
+	rotate_y(yaw_rate * delta)
+	var forward := -global_basis.z
+	forward.y = 0
+	forward = forward.normalized()
+	var direction := forward.slide(get_floor_normal()).normalized() if is_on_floor() else forward
+	var fall_speed := minf(velocity.y, 0) - 24.0 * delta
+	velocity = direction * speed_mps
+	if not is_on_floor():
+		velocity.y = fall_speed
+	var previous_position := global_position
+	_try_surface_step(Vector3(velocity.x, 0, velocity.z) * delta)
+	move_and_slide()
+	# A wall impact must remove forward speed rather than accumulating throttle.
+	if is_on_wall():
+		speed_mps = velocity.dot(direction)
+	if get_slide_collision_count() > 0:
+		var travelled_speed := (global_position - previous_position).dot(direction) / maxf(delta, .0001)
+		if absf(travelled_speed) < absf(speed_mps) * .5:
+			speed_mps = travelled_speed
+	update_zone_state()
+	_apply_limit()
+	player_state.speed_mps = speed_mps
+	# Match the visible chassis to the banking, leaving the collision body upright.
+	if is_on_floor():
+		var normal := global_basis.inverse() * get_floor_normal()
+		var right := normal.cross(Vector3.BACK).normalized()
+		var slope_basis := Basis(right, normal, right.cross(normal).normalized()).orthonormalized()
+		$Visual.basis = $Visual.basis.slerp(slope_basis, minf(1, delta * 10))
+		if has_node("Cockpit"):
+			$Cockpit.basis = $Visual.basis
+
+func _try_surface_step(motion: Vector3) -> void:
+	# The box cannot roll over a mesh edge like a tyre. Allow a small grounded
+	# rise only when the full body has overhead/forward clearance and a floor landing.
+	if not is_on_floor() or max_surface_step_m <= 0 or motion.length_squared() < .00000001:
+		return
+	if not test_move(global_transform, motion):
+		return
+	var lift := Vector3.UP * max_surface_step_m
+	if test_move(global_transform, lift):
+		return
+	var raised := global_transform
+	raised.origin += lift
+	if test_move(raised, motion):
+		return
+	var landing := raised
+	landing.origin += motion
+	var collision := KinematicCollision3D.new()
+	if not test_move(landing, Vector3.DOWN * (max_surface_step_m + .02), collision):
+		return
+	if collision.get_normal().dot(Vector3.UP) < cos(floor_max_angle):
+		return
+	var rise := max_surface_step_m + collision.get_travel().y
+	if rise <= .001 or rise > max_surface_step_m:
+		return
+	global_position.y += rise + .001
+
+func _apply_limit() -> void:
+	var cap: float = track_data.speed_limit_kph / 3.6 if player_state.is_in_pit_speed_zone else max_speed_kph / 3.6
+	speed_mps = clampf(speed_mps, -minf(reverse_speed_kph / 3.6, cap), cap)

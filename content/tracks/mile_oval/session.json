@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "units": "metres",
+  "pit_boxes": [
+    {
+      "id": "player_pit_01",
+      "position": [-81.04, 0.025, 92.75],
+      "heading_deg": -90.0
+    },
+    {
+      "id": "ai_pit_02",
+      "position": [-71.152, 0.025, 92.75],
+      "heading_deg": -90.0
+    },
+    {
+      "id": "ai_pit_03",
+      "position": [-61.264, 0.025, 92.75],
+      "heading_deg": -90.0
+    }
+  ],
+  "pit_speed_zone": {
+    "limit_kph": 80.0,
+    "polygon_xz": [[-190.0, 88.0], [195.0, 88.0], [195.0, 119.0], [-190.0, 119.0]],
+    "exit_line_x": 195.0
+  },
+  "pit_lane": {
+    "path_file": "ai/reference_paths.json",
+    "half_width_m": 5.0,
+    "min_height_m": -0.5,
+    "max_height_m": 2.5,
+    "pit_box_area_xz": [[-90.98646, 89.5], [190.98646, 89.5], [190.98646, 96.0], [-90.98646, 96.0]]
+  }
+}

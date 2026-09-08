@@ -1,0 +1,72 @@
+[gd_scene format=3 uid="uid://b50ks86ix2r2f"]
+
+[ext_resource type="PackedScene" uid="uid://baul6f47f8teh" path="res://content/tracks/mile_oval/scenes/track.tscn" id="1"]
+[ext_resource type="Script" uid="uid://blx4gekgu8d32" path="res://game/camera/track_inspection.gd" id="2"]
+[ext_resource type="PackedScene" path="res://content/vehicles/open_wheel/scenes/player_vehicle.tscn" id="3"]
+[ext_resource type="Script" uid="uid://cgbq0s0hehtpd" path="res://game/camera/cockpit_view.gd" id="4"]
+[ext_resource type="Script" uid="uid://ey8vjctgjhyq" path="res://game/main/practice.gd" id="5"]
+[ext_resource type="Script" uid="uid://bs7yoipt76xsc" path="res://game/race/session.gd" id="6"]
+[ext_resource type="Script" uid="uid://lwoa7eqptu6b" path="res://game/vehicle/player_state.gd" id="7"]
+[ext_resource type="Sky" uid="uid://dsx66hg5a2bx0" path="res://content/environments/retro_city/sky.tres" id="8_sky"]
+
+[sub_resource type="Environment" id="Environment"]
+background_mode = 2
+background_color = Color(0.39, 0.55, 0.69, 1)
+sky = ExtResource("8_sky")
+ambient_light_source = 3
+ambient_light_color = Color(0.8, 0.86, 1, 1)
+ambient_light_energy = 0.65
+
+[sub_resource type="StyleBoxFlat" id="Panel"]
+content_margin_left = 16.0
+content_margin_top = 12.0
+content_margin_right = 16.0
+content_margin_bottom = 12.0
+bg_color = Color(0.035, 0.05, 0.07, 0.88)
+
+[node name="TrackPreview" type="Node3D" unique_id=1541951410]
+script = ExtResource("5")
+
+[node name="Session" type="Node" parent="." unique_id=52789617]
+script = ExtResource("6")
+
+[node name="MileOval" parent="." unique_id=1081321786 instance=ExtResource("1")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 32.243866, 22.33728, 24.802063)
+
+[node name="DisplayCar" parent="." unique_id=508108371 instance=ExtResource("3")]
+physics_directory = "res://content/vehicles/open_wheel/physics"
+
+[node name="PlayerState" type="Node" parent="DisplayCar" unique_id=1178006607]
+script = ExtResource("7")
+
+[node name="Cockpit" type="Node3D" parent="DisplayCar" unique_id=307119255]
+script = ExtResource("4")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=2030323375]
+environment = SubResource("Environment")
+
+[node name="Sun" type="DirectionalLight3D" parent="." unique_id=2037260286]
+transform = Transform3D(0.8660254, 0.40957603, -0.28678823, 0, 0.57357645, 0.81915206, 0.5, -0.7094065, 0.49673176, 0, 0, 0)
+light_energy = 1.2
+shadow_enabled = true
+directional_shadow_max_distance = 1200.0
+
+[node name="InspectionCamera" type="Camera3D" parent="." unique_id=658471081]
+far = 3000.0
+script = ExtResource("2")
+
+[node name="HUD" type="CanvasLayer" parent="." unique_id=1456139346]
+
+[node name="Panel" type="PanelContainer" parent="HUD" unique_id=2131635361]
+offset_left = 18.0
+offset_top = 18.0
+mouse_filter = 2
+theme_override_styles/panel = SubResource("Panel")
+
+[node name="Label" type="Label" parent="HUD/Panel" unique_id=2108220139]
+layout_mode = 2
+text = "OVAL 95  |  Static cockpit preview
+1–4: exterior views   5: cockpit
+Cockpit: [ / ] FOV   PgUp / PgDn seat   Home reset
+Exterior: right drag orbit / wheel zoom
+Dashboard readings are placeholders"

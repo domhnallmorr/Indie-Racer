@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "type": "track",
+  "id": "mile_oval",
+  "display_name": "Mile Oval",
+  "description": "Milwaukee-inspired oval with banked corners, apron, walls and extended pit exit; not a surveyed recreation.",
+  "scene": "scenes/track.tscn",
+  "units": "metres",
+  "corner_banking_deg": 9,
+  "straight_banking_deg": 0,
+  "racing_width_m": 20,
+  "apron_width_m": 6,
+  "pit_boxes": 27,
+  "length_m": 1609.344,
+  "direction": "counterclockwise"
+}

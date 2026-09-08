@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "units": "metres",
+  "gates": [
+    {"name": "StartFinish", "point": [61.79594, 0, 125], "normal": [1, 0, 0], "half_width_m": 15.5},
+    {"name": "Turns12", "point": [330.98646, 0, 0], "normal": [0, 0, -1], "half_width_m": 15.5},
+    {"name": "Backstraight", "point": [0, 0, -125], "normal": [-1, 0, 0], "half_width_m": 15.5},
+    {"name": "Turns34", "point": [-330.98646, 0, 0], "normal": [0, 0, 1], "half_width_m": 15.5}
+  ]
+}

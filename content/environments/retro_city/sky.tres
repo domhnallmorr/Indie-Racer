@@ -1,0 +1,12 @@
+[gd_resource type="Sky" format=3 uid="uid://dsx66hg5a2bx0"]
+
+[ext_resource type="Shader" uid="uid://deonyl7m7d1vq" path="res://content/environments/retro_city/sky.gdshader" id="1"]
+[ext_resource type="Texture2D" uid="uid://batr2f7tc5wcx" path="res://content/environments/retro_city/skyline.png" id="2"]
+
+[sub_resource type="ShaderMaterial" id="SkyMaterial"]
+shader = ExtResource("1")
+shader_parameter/panorama = ExtResource("2")
+shader_parameter/horizon_offset = 0.065
+
+[resource]
+sky_material = SubResource("SkyMaterial")
