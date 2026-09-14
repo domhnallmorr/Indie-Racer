@@ -1,0 +1,398 @@
+{
+  "schema_version": 1,
+  "id": "club_1996",
+  "display_name": "Club 1996 — 15-car test field",
+  "year": 1996,
+  "entries": [
+    {
+      "id": "Blake",
+      "driver_name": "Sam Blake",
+      "number": "8",
+      "team": "Blake Racing",
+      "colour": "#d93630",
+      "car_spec": "res://content/car_specs/open_wheel_95.json",
+      "ratings": {
+        "cornering": [
+          94,
+          100
+        ],
+        "braking": [
+          88,
+          100
+        ],
+        "throttle": [
+          90,
+          100
+        ],
+        "consistency": [
+          55,
+          85
+        ]
+      }
+    },
+    {
+      "id": "Reed",
+      "driver_name": "Taylor Reed",
+      "number": "21",
+      "team": "Reed Racing",
+      "colour": "#20bda0",
+      "car_spec": "res://content/car_specs/open_wheel_95.json",
+      "ratings": {
+        "cornering": [
+          93,
+          99
+        ],
+        "braking": [
+          87,
+          99
+        ],
+        "throttle": [
+          89,
+          99
+        ],
+        "consistency": [
+          55,
+          85
+        ]
+      }
+    },
+    {
+      "id": "Grant",
+      "driver_name": "Casey Grant",
+      "number": "3",
+      "team": "Grant Racing",
+      "colour": "#246ce0",
+      "car_spec": "res://content/car_specs/open_wheel_95.json",
+      "ratings": {
+        "cornering": [
+          92,
+          98
+        ],
+        "braking": [
+          86,
+          98
+        ],
+        "throttle": [
+          88,
+          98
+        ],
+        "consistency": [
+          55,
+          85
+        ]
+      }
+    },
+    {
+      "id": "Hayes",
+      "driver_name": "Jordan Hayes",
+      "number": "14",
+      "team": "Hayes Racing",
+      "colour": "#e6b800",
+      "car_spec": "res://content/car_specs/open_wheel_95.json",
+      "ratings": {
+        "cornering": [
+          91,
+          97
+        ],
+        "braking": [
+          85,
+          97
+        ],
+        "throttle": [
+          87,
+          97
+        ],
+        "consistency": [
+          55,
+          85
+        ]
+      }
+    },
+    {
+      "id": "Ward",
+      "driver_name": "Riley Ward",
+      "number": "5",
+      "team": "Ward Racing",
+      "colour": "#9c54d6",
+      "car_spec": "res://content/car_specs/open_wheel_95.json",
+      "ratings": {
+        "cornering": [
+          90,
+          96
+        ],
+        "braking": [
+          84,
+          96
+        ],
+        "throttle": [
+          86,
+          96
+        ],
+        "consistency": [
+          55,
+          85
+        ]
+      }
+    },
+    {
+      "id": "Cole",
+      "driver_name": "Morgan Cole",
+      "number": "33",
+      "team": "Cole Racing",
+      "colour": "#ef7623",
+      "car_spec": "res://content/car_specs/open_wheel_95.json",
+      "ratings": {
+        "cornering": [
+          72,
+          78
+        ],
+        "braking": [
+          66,
+          78
+        ],
+        "throttle": [
+          68,
+          78
+        ],
+        "consistency": [
+          60,
+          90
+        ]
+      }
+    },
+    {
+      "id": "Shaw",
+      "driver_name": "Alex Shaw",
+      "number": "18",
+      "team": "Shaw Racing",
+      "colour": "#f5f5f5",
+      "car_spec": "res://content/car_specs/open_wheel_95.json",
+      "ratings": {
+        "cornering": [
+          71,
+          77
+        ],
+        "braking": [
+          65,
+          77
+        ],
+        "throttle": [
+          67,
+          77
+        ],
+        "consistency": [
+          60,
+          90
+        ]
+      }
+    },
+    {
+      "id": "Lane",
+      "driver_name": "Jamie Lane",
+      "number": "44",
+      "team": "Lane Racing",
+      "colour": "#41ad4b",
+      "car_spec": "res://content/car_specs/open_wheel_95.json",
+      "ratings": {
+        "cornering": [
+          70,
+          76
+        ],
+        "braking": [
+          64,
+          76
+        ],
+        "throttle": [
+          66,
+          76
+        ],
+        "consistency": [
+          60,
+          90
+        ]
+      }
+    },
+    {
+      "id": "Quinn",
+      "driver_name": "Avery Quinn",
+      "number": "9",
+      "team": "Quinn Racing",
+      "colour": "#ef65a2",
+      "car_spec": "res://content/car_specs/open_wheel_95.json",
+      "ratings": {
+        "cornering": [
+          69,
+          75
+        ],
+        "braking": [
+          63,
+          75
+        ],
+        "throttle": [
+          65,
+          75
+        ],
+        "consistency": [
+          60,
+          90
+        ]
+      }
+    },
+    {
+      "id": "Frost",
+      "driver_name": "Cameron Frost",
+      "number": "26",
+      "team": "Frost Racing",
+      "colour": "#43bfd0",
+      "car_spec": "res://content/car_specs/open_wheel_95.json",
+      "ratings": {
+        "cornering": [
+          68,
+          74
+        ],
+        "braking": [
+          62,
+          74
+        ],
+        "throttle": [
+          64,
+          74
+        ],
+        "consistency": [
+          60,
+          90
+        ]
+      }
+    },
+    {
+      "id": "Wells",
+      "driver_name": "Drew Wells",
+      "number": "41",
+      "team": "Wells Racing",
+      "colour": "#a14d2a",
+      "car_spec": "res://content/car_specs/open_wheel_95.json",
+      "ratings": {
+        "cornering": [
+          44,
+          50
+        ],
+        "braking": [
+          38,
+          50
+        ],
+        "throttle": [
+          40,
+          50
+        ],
+        "consistency": [
+          65,
+          95
+        ]
+      }
+    },
+    {
+      "id": "Park",
+      "driver_name": "Robin Park",
+      "number": "17",
+      "team": "Park Racing",
+      "colour": "#788aee",
+      "car_spec": "res://content/car_specs/open_wheel_95.json",
+      "ratings": {
+        "cornering": [
+          43,
+          49
+        ],
+        "braking": [
+          37,
+          49
+        ],
+        "throttle": [
+          39,
+          49
+        ],
+        "consistency": [
+          65,
+          95
+        ]
+      }
+    },
+    {
+      "id": "Stone",
+      "driver_name": "Charlie Stone",
+      "number": "62",
+      "team": "Stone Racing",
+      "colour": "#b4c342",
+      "car_spec": "res://content/car_specs/open_wheel_95.json",
+      "ratings": {
+        "cornering": [
+          42,
+          48
+        ],
+        "braking": [
+          36,
+          48
+        ],
+        "throttle": [
+          38,
+          48
+        ],
+        "consistency": [
+          65,
+          95
+        ]
+      }
+    },
+    {
+      "id": "Fox",
+      "driver_name": "Harper Fox",
+      "number": "70",
+      "team": "Fox Racing",
+      "colour": "#ce9696",
+      "car_spec": "res://content/car_specs/open_wheel_95.json",
+      "ratings": {
+        "cornering": [
+          41,
+          47
+        ],
+        "braking": [
+          35,
+          47
+        ],
+        "throttle": [
+          37,
+          47
+        ],
+        "consistency": [
+          65,
+          95
+        ]
+      }
+    },
+    {
+      "id": "West",
+      "driver_name": "Finley West",
+      "number": "88",
+      "team": "West Racing",
+      "colour": "#708c94",
+      "car_spec": "res://content/car_specs/open_wheel_95.json",
+      "ratings": {
+        "cornering": [
+          40,
+          46
+        ],
+        "braking": [
+          34,
+          46
+        ],
+        "throttle": [
+          36,
+          46
+        ],
+        "consistency": [
+          65,
+          95
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "schema_version": 1,
+  "description": "ICR2 prototype authored pit-out profile over the existing per-box departure and shared merge route. Geographic 80 km/h limiter takes priority.",
+  "departure_kph": 55.0,
+  "cruise_kph": 180.0,
+  "merge_acceleration_m": 340.0
+}

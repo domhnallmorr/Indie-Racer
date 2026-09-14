@@ -12,11 +12,17 @@ const NUMERIC = {
 }
 
 func load_directory(directory: String) -> bool:
+	var files := {}
+	for section in NUMERIC:
+		files[section] = directory.path_join(section+".cfg")
+	return load_components(files)
+
+func load_components(files: Dictionary) -> bool:
 	values.clear()
 	errors.clear()
 	for section in NUMERIC:
 		var config := ConfigFile.new()
-		var path := directory.path_join(section+".cfg")
+		var path: String = files.get(section, "")
 		if config.load(path) != OK:
 			errors.append("Cannot read "+path)
 			continue

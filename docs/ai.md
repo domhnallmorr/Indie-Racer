@@ -1,5 +1,13 @@
 # Two-car AI prototype
 
+The current default is the [ICR2 method two-car circulation prototype](icr2_method.md).
+The bicycle-based rosters and their historical notes remain available below.
+
+For the current overtaking and two-wide prototype, see [AI racecraft](racecraft.md).
+
+Historical prototype notes follow. For the current shared vehicle physics and
+uncapped, vehicle-dependent racing speed planner, see [AI vehicle physics](ai_physics.md).
+
 Practice includes **AI_Blue** and **AI_Yellow**, retaining the original basic car
 controller while the player now uses bicycle physics. They share the collision
 approach and pit-limiter zone. They have no cockpit viewports and their

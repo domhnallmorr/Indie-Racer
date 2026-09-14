@@ -12,7 +12,7 @@ func configure(track_node: Node3D, session_node: Node, vehicles: Array) -> void:
 	var data = JSON.parse_string(FileAccess.get_file_as_string("res://content/tracks/mile_oval/ai/timing_gates.json"))
 	gates = data.gates
 	for car in vehicles:
-		entries.append({"car": car, "name": "Player" if car.name == "DisplayCar" else String(car.name).replace("AI_", "AI "),
+		entries.append({"car": car, "name": "Player" if car.name == "DisplayCar" else str(car.get_meta("driver_name",String(car.name).replace("AI_", "AI "))),
 			"previous": track.to_local(car.global_position), "armed": false, "expected": 0,
 			"started": 0.0, "laps": 0, "best": 0.0, "last": 0.0, "order": entries.size()})
 

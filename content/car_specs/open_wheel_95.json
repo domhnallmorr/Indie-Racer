@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "id": "open_wheel_95",
+  "ai_class": "open_wheel",
+  "scene": "res://content/vehicles/open_wheel/scenes/vehicle.tscn",
+  "components": {
+    "chassis": "res://content/vehicles/open_wheel/physics/chassis.cfg",
+    "tires": "res://content/vehicles/open_wheel/physics/tires.cfg",
+    "engine": "res://content/vehicles/open_wheel/physics/engine.cfg",
+    "gearbox": "res://content/vehicles/open_wheel/physics/gearbox.cfg",
+    "aero": "res://content/vehicles/open_wheel/physics/aero.cfg",
+    "assists": "res://content/vehicles/open_wheel/physics/assists.cfg"
+  }
+}

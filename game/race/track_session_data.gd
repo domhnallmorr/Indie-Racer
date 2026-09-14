@@ -9,12 +9,15 @@ var max_height := 2.5
 var speed_zone := PackedVector2Array()
 var speed_limit_kph := 80.0
 var speed_exit_x := 195.0
+var pit_sections: Array[Rect2] = []
+const PIT_SECTION_SEGMENTS := 20
 
 func load_config(path: String) -> Error:
 	pit_boxes.clear()
 	pit_path.clear()
 	pit_box_area.clear()
 	speed_zone.clear()
+	pit_sections.clear()
 	var data = JSON.parse_string(FileAccess.get_file_as_string(path))
 	if not data is Dictionary or data.get("schema_version") != 1 or data.get("units") != "metres":
 		return ERR_INVALID_DATA
@@ -66,10 +69,17 @@ func load_config(path: String) -> Error:
 		if not _numbers(point, 2):
 			return ERR_INVALID_DATA
 		speed_zone.append(Vector2(point[0], point[1]))
+	# Broad-phase groups avoid measuring every one of the pit path's segments
+	# for every car, several times per physics tick. Exact distance stays decisive.
+	for first in range(0,pit_path.size()-1,PIT_SECTION_SEGMENTS):
+		var bounds := Rect2(Vector2(pit_path[first].x,pit_path[first].z),Vector2.ZERO)
+		for i in range(first+1,mini(first+PIT_SECTION_SEGMENTS+1,pit_path.size())):
+			bounds = bounds.expand(Vector2(pit_path[i].x,pit_path[i].z))
+		pit_sections.append(bounds.grow(half_width+.001))
 	return OK
 
 func contains_speed_limit_zone(local_position: Vector3) -> bool:
-	return contains_pit_lane(local_position) and Geometry2D.is_point_in_polygon(Vector2(local_position.x, local_position.z), speed_zone)
+	return Geometry2D.is_point_in_polygon(Vector2(local_position.x, local_position.z), speed_zone) and contains_pit_lane(local_position)
 
 func pit_box_transform(index: int = 0) -> Transform3D:
 	var box: Dictionary = pit_boxes[index]
@@ -82,7 +92,16 @@ func contains_pit_lane(local_position: Vector3) -> bool:
 	var point := Vector2(local_position.x, local_position.z)
 	if Geometry2D.is_point_in_polygon(point, pit_box_area):
 		return true
-	for i in range(pit_path.size() - 1):
+	# Keep the uncached path usable by small programmatic track fixtures.
+	if pit_sections.is_empty():
+		return _contains_path_range(point,0,pit_path.size()-1)
+	for section in range(pit_sections.size()):
+		if pit_sections[section].has_point(point) and _contains_path_range(point,section*PIT_SECTION_SEGMENTS,mini((section+1)*PIT_SECTION_SEGMENTS,pit_path.size()-1)):
+			return true
+	return false
+
+func _contains_path_range(point: Vector2, first: int, end: int) -> bool:
+	for i in range(first,end):
 		var a := Vector2(pit_path[i].x, pit_path[i].z)
 		var b := Vector2(pit_path[i+1].x, pit_path[i+1].z)
 		var nearest := Geometry2D.get_closest_point_to_segment(point, a, b)

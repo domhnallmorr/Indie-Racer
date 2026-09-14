@@ -2,6 +2,8 @@ extends "res://game/vehicle/basic_car.gd"
 const Config = preload("res://game/vehicle/physics_config.gd")
 const Model = preload("res://game/vehicle/bicycle_model.gd")
 @export_dir var physics_directory := "res://content/vehicles/open_wheel/physics"
+@export var human_controlled := true
+var physics_components: Dictionary = {}
 var sim = Model.new()
 var parameters = Config.new()
 var physics_ready := false
@@ -13,7 +15,7 @@ func _exit_tree() -> void:
 	telemetry.stop()
 
 func _input(event: InputEvent) -> void:
-	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_F11 and physics_ready:
+	if human_controlled and event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_F11 and physics_ready:
 		if telemetry.file != null:
 			telemetry.stop()
 		else:
@@ -28,19 +30,20 @@ var gear_text: String:
 
 func _ready() -> void:
 	super._ready()
-	physics_ready = parameters.load_directory(physics_directory)
+	physics_ready = parameters.load_directory(physics_directory) if physics_components.is_empty() else parameters.load_components(physics_components)
 	if not physics_ready:
 		push_error("Player physics configuration failed: "+"; ".join(parameters.errors))
 		return
 	sim.configure(parameters.values)
 	max_surface_step_m = parameters.values.surface_step_m
 	floor_constant_speed = false
-	wheel_input = preload("res://game/input/wheel_input.gd").new()
-	wheel_input.player = self
-	add_child(wheel_input)
+	if human_controlled:
+		wheel_input = preload("res://game/input/wheel_input.gd").new()
+		wheel_input.player = self
+		add_child(wheel_input)
 
 func _physics_process(delta: float) -> void:
-	if driving_enabled and physics_ready:
+	if human_controlled and driving_enabled and physics_ready:
 		var inputs: Vector3 = wheel_input.controls()
 		drive_step(delta, inputs.x, inputs.y, inputs.z)
 
@@ -112,7 +115,7 @@ func reset_dynamics() -> void:
 	velocity = Vector3.ZERO
 
 func _unhandled_input(event: InputEvent) -> void:
-	if not physics_ready or not driving_enabled or not event is InputEventKey or not event.pressed or event.echo:
+	if not human_controlled or not physics_ready or not driving_enabled or not event is InputEventKey or not event.pressed or event.echo:
 		return
 	match event.keycode:
 		KEY_M: sim.automatic = not sim.automatic

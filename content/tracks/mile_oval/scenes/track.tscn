@@ -2,6 +2,11 @@
 
 [ext_resource type="PackedScene" uid="uid://bu7hi8xdw7loh" path="res://content/tracks/mile_oval/models/mile_oval.glb" id="1"]
 [ext_resource type="Script" uid="uid://cgtfgslr2m7p3" path="res://content/tracks/mile_oval/grandstands/grandstands.gd" id="2"]
+[ext_resource type="Script" path="res://content/tracks/mile_oval/hoardings/hoardings.gd" id="3_hoardings"]
+[ext_resource type="Script" path="res://content/tracks/mile_oval/backstraight/backstraight.gd" id="4_backstraight"]
+[ext_resource type="Script" path="res://content/tracks/mile_oval/grandstands/main_grandstand.gd" id="5_mainstand"]
+[ext_resource type="Script" path="res://content/tracks/mile_oval/surface/track_surface.gd" id="6_surface"]
+[ext_resource type="Script" path="res://content/tracks/mile_oval/grandstands/catchfence.gd" id="7_catchfence"]
 
 [node name="MileOval" type="Node3D" unique_id=1582581415]
 metadata/units = "metres"
@@ -14,3 +19,18 @@ script = ExtResource("2")
 
 [node name="PlayerSpawn" type="Marker3D" parent="." unique_id=1998729533]
 transform = Transform3D(7.54979e-08, 0, -1, 0, 1, 0, 1, 0, 7.54979e-08, 51.79594, 0.6, 129)
+
+[node name="Hoardings" type="Node3D" parent="."]
+script = ExtResource("3_hoardings")
+
+[node name="BackstraightScenery" type="Node3D" parent="."]
+script = ExtResource("4_backstraight")
+
+[node name="MainGrandstand" type="Node3D" parent="."]
+script = ExtResource("5_mainstand")
+
+[node name="TrackSurface" type="Node3D" parent="."]
+script = ExtResource("6_surface")
+
+[node name="Catchfence" type="Node3D" parent="."]
+script = ExtResource("7_catchfence")

@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "classes": {
+    "open_wheel": {
+      "cornering_utilisation": 0.97,
+      "minimum_cornering_factor": 0.97,
+      "pit_cornering_utilisation": 0.92,
+      "pit_minimum_cornering_factor": 0.8,
+      "pit_braking_utilisation": 0.8,
+      "braking_utilisation": 0.9,
+      "braking_margin_m": 5
+    }
+  }
+}

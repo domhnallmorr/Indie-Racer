@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "id": "default",
+  "display_name": "Reference field",
+  "year": 1995,
+  "entries": [
+    {
+      "id": "Blue",
+      "driver_name": "Alex Morgan",
+      "number": "12",
+      "team": "Blue Racing",
+      "colour": "#0640d9",
+      "car_spec": "res://content/car_specs/open_wheel_95.json",
+      "ratings": {
+        "cornering": [
+          100,
+          100
+        ],
+        "braking": [
+          100,
+          100
+        ],
+        "throttle": [
+          100,
+          100
+        ],
+        "consistency": [
+          100,
+          100
+        ]
+      }
+    },
+    {
+      "id": "Yellow",
+      "driver_name": "Jamie Ross",
+      "number": "27",
+      "team": "Yellow Racing",
+      "colour": "#f2b300",
+      "car_spec": "res://content/car_specs/open_wheel_95.json",
+      "ratings": {
+        "cornering": [
+          100,
+          100
+        ],
+        "braking": [
+          100,
+          100
+        ],
+        "throttle": [
+          100,
+          100
+        ],
+        "consistency": [
+          100,
+          100
+        ]
+      }
+    }
+  ]
+}

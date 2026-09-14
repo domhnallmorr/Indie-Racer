@@ -56,7 +56,13 @@ func _unhandled_input(event: InputEvent) -> void:
 				yaw = 0.8
 				pitch = 0.35
 			KEY_6, KEY_7:
-				followed_ai = 0 if event.keycode == KEY_6 else 1
+				var count: int = get_parent().ai_cars.size()
+				if count == 0:
+					return
+				if followed_ai < 0:
+					followed_ai = 0 if event.keycode == KEY_6 else mini(1,count-1)
+				else:
+					followed_ai = posmod(followed_ai+(-1 if event.keycode == KEY_6 else 1),count)
 				follow_player = true
 				distance = 12.0
 				pitch = .45

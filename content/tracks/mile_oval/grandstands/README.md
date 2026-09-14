@@ -13,3 +13,9 @@ Use case: stylized-concept. Create a single square game texture atlas for late 1
 ## Visual check
 
 Run Godot with `--path . --script res://tools/capture_grandstands.gd` to verify stand counts and main-stand alignment, and save trackside and overhead previews in `builds/`.
+
+## Covered main grandstand
+
+main_grandstand.gd adds a 264 m shallow canopy, slender front/rear pillars with diagonal braces, ten crowd bays and aisles, and a central 76 m windowed booth enclosure. It uses the user's supplied 2002 race screenshot as a visual reference; proportions and booth function are approximations, not verified 1995 architecture. Existing finish-line alignment, seven underlying seating rows and the ten separate open stands are retained. Crowd texture reuses the existing atlas; roof, steelwork and windows use simple matte materials. No physics changes.
+
+Validate and render with tools/capture_main_grandstand.gd. Previews: builds/main_grandstand_trackside.png and builds/main_grandstand_overview.png.
