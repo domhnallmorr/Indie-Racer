@@ -21,6 +21,7 @@ config/features=PackedStringArray("4.7", "GL Compatibility")
 [autoload]
 
 ContentCatalog="*res://game/content/content_catalog.gd"
+WindowControls="*res://game/main/window_controls.gd"
 
 [display]
 

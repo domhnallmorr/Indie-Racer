@@ -26,16 +26,16 @@ func reference_step(delta: float, target_speed: float, curvature: float) -> void
 	var normal := get_floor_normal() if is_on_floor() else Vector3.UP
 	var forward := (-global_basis.z).slide(normal).normalized()
 	var fall := velocity.y-9.81*delta
-	velocity = forward*speed_mps
+	contact_drift = contact_drift.move_toward(Vector3.ZERO,4.0*delta)
+	velocity = forward*speed_mps+contact_drift
 	if not is_on_floor():
 		velocity.y = fall
 	var previous := global_position
-	_try_surface_step(Vector3(velocity.x,0,velocity.z)*delta)
-	move_and_slide()
-	apply_floor_snap()
+	var hit_static_wall := _move_with_car_contacts(delta)
 	var travelled := (global_position-previous)/maxf(delta,.0001)
-	if is_on_wall() or (get_slide_collision_count() > 0 and travelled.length() < speed_mps*.5):
+	if hit_static_wall or (not car_contact_this_step and get_slide_collision_count() > 0 and travelled.length() < absf(speed_mps)*.5):
 		speed_mps = maxf(0,travelled.dot(forward))
+		contact_drift = Vector3.ZERO
 	update_zone_state()
 	if player_state.is_in_pit_speed_zone:
 		speed_mps = minf(speed_mps,track_data.speed_limit_kph/3.6)
@@ -49,3 +49,5 @@ func reference_step(delta: float, target_speed: float, curvature: float) -> void
 func reset_dynamics() -> void:
 	speed_mps = 0
 	velocity = Vector3.ZERO
+	contact_drift = Vector3.ZERO
+	contact_partners.clear()

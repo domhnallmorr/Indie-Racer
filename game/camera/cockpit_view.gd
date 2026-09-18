@@ -10,10 +10,23 @@ var rear_local_poses: Array[Transform3D] = []
 var dashboard_view: SubViewport
 
 func _ready() -> void:
+	position = get_parent().get_node("Visual").get_meta("cockpit_offset",Vector3.ZERO)
 	interior = load("res://content/vehicles/open_wheel/models/cockpit.glb").instantiate()
 	add_child(interior)
+	var exterior_nose = get_parent().get_node("Visual").find_child("Nose",true,false)
 	for mesh in interior.find_children("*", "MeshInstance3D", true, false):
 		mesh.layers = 4
+		if mesh.name.begins_with("Instrument"):
+			mesh.scale.x *= get_parent().get_node("Visual").get_meta("dashboard_width_scale",1.0)
+			mesh.scale.y *= get_parent().get_node("Visual").get_meta("dashboard_width_scale",1.0)
+			mesh.position.z += get_parent().get_node("Visual").get_meta("dashboard_rearward_offset",0.0)
+		if exterior_nose != null:
+			for surface in range(mesh.mesh.get_surface_count()):
+				var original = mesh.get_active_material(surface)
+				if original != null and original.resource_name == "CockpitRed":
+					var paint = original.duplicate()
+					paint.albedo_color = exterior_nose.get_active_material(0).albedo_color
+					mesh.set_surface_override_material(surface,paint)
 	# Hide the exterior driver and small placeholder cockpit parts only from this camera.
 	for mesh in get_parent().get_node("Visual").find_children("*", "MeshInstance3D", true, false):
 		mesh.layers = 2
@@ -43,6 +56,8 @@ func _ready() -> void:
 		var mirror := SubViewport.new()
 		mirror.size = Vector2i(384,160)
 		mirror.world_3d = get_viewport().world_3d
+		# Only the main camera listens; mirror views must not duplicate spatial audio.
+		mirror.audio_listener_enable_3d = false
 		mirror.render_target_update_mode = SubViewport.UPDATE_DISABLED
 		add_child(mirror)
 		mirror_views.append(mirror)
@@ -67,6 +82,9 @@ func _process(_delta: float) -> void:
 		rear_cameras[i].global_transform = global_transform * rear_local_poses[i]
 
 func _surface(label: String, pos: Vector3, dimensions: Vector2, viewport: SubViewport, flip: bool) -> void:
+	if label == "Dashboard":
+		dimensions *= get_parent().get_node("Visual").get_meta("dashboard_width_scale",1.0)
+		pos.z += get_parent().get_node("Visual").get_meta("dashboard_rearward_offset",0.0)
 	var panel := MeshInstance3D.new()
 	panel.name = label
 	var quad := QuadMesh.new()

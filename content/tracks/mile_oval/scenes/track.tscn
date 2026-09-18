@@ -7,6 +7,13 @@
 [ext_resource type="Script" path="res://content/tracks/mile_oval/grandstands/main_grandstand.gd" id="5_mainstand"]
 [ext_resource type="Script" path="res://content/tracks/mile_oval/surface/track_surface.gd" id="6_surface"]
 [ext_resource type="Script" path="res://content/tracks/mile_oval/grandstands/catchfence.gd" id="7_catchfence"]
+[ext_resource type="Script" path="res://content/tracks/mile_oval/flag/flagpole.gd" id="8_flag"]
+[ext_resource type="Script" path="res://content/tracks/mile_oval/surface/infield.gd" id="9_infield"]
+[ext_resource type="Script" path="res://content/tracks/mile_oval/trees/trees.gd" id="10_trees"]
+[ext_resource type="Script" path="res://content/tracks/mile_oval/camping/rvs.gd" id="11_rvs"]
+[ext_resource type="Script" path="res://content/tracks/mile_oval/building/pit_building.gd" id="12_building"]
+[ext_resource type="Script" path="res://content/tracks/mile_oval/transporters/transporters.gd" id="13_trucks"]
+[ext_resource type="Script" path="res://content/tracks/mile_oval/flag/flag_stand.gd" id="14_starter"]
 
 [node name="MileOval" type="Node3D" unique_id=1582581415]
 metadata/units = "metres"
@@ -34,3 +41,24 @@ script = ExtResource("6_surface")
 
 [node name="Catchfence" type="Node3D" parent="."]
 script = ExtResource("7_catchfence")
+
+[node name="InfieldFlagpole" type="Node3D" parent="."]
+script = ExtResource("8_flag")
+
+[node name="InfieldScenery" type="Node3D" parent="."]
+script = ExtResource("9_infield")
+
+[node name="UrbanTrees" type="Node3D" parent="."]
+script = ExtResource("10_trees")
+
+[node name="InfieldCamping" type="Node3D" parent="."]
+script = ExtResource("11_rvs")
+
+[node name="PitMediaCentre" type="Node3D" parent="."]
+script = ExtResource("12_building")
+
+[node name="TeamTransporters" type="Node3D" parent="."]
+script = ExtResource("13_trucks")
+
+[node name="StarterFlagStand" type="Node3D" parent="."]
+script = ExtResource("14_starter")

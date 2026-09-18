@@ -71,14 +71,10 @@ func drive_step(delta: float, throttle_input: float, brake_input: float, steerin
 	if not is_on_floor():
 		velocity.y = vertical_fall
 	var previous := global_position
-	_try_surface_step(Vector3(velocity.x,0,velocity.z)*delta)
-	move_and_slide()
-	# Uphill road-plane velocity can disable CharacterBody's automatic snap.
-	# Keep the chassis supported across banking mesh seams within the snap distance.
-	apply_floor_snap()
-	var travelled := (global_position-previous)/maxf(delta,.0001)
 	var expected := Vector2(sim.u,sim.v).length()
-	if get_slide_collision_count() > 0 and (is_on_wall() or travelled.length() < expected*.5):
+	var hit_static_wall := _move_with_car_contacts(delta)
+	var travelled := (global_position-previous)/maxf(delta,.0001)
+	if hit_static_wall or (not car_contact_this_step and get_slide_collision_count() > 0 and travelled.length() < expected*.5):
 		sim.u = travelled.dot(forward)
 		sim.v = travelled.dot(left)
 		sim.yaw_rate *= .5
@@ -99,6 +95,17 @@ func drive_step(delta: float, throttle_input: float, brake_input: float, steerin
 		if has_node("Cockpit"):
 			$Cockpit.basis = $Visual.basis
 
+func _receive_contact_velocity(new_velocity: Vector3) -> void:
+	velocity = new_velocity
+	var normal := get_floor_normal() if is_on_floor() else Vector3.UP
+	var forward := (-global_basis.z).slide(normal).normalized()
+	var left := normal.cross(forward).normalized()
+	sim.u = new_velocity.dot(forward)
+	sim.v = new_velocity.dot(left)
+	speed_mps = Vector2(sim.u,sim.v).length()*(-1.0 if sim.u < 0 else 1.0)
+	if player_state != null:
+		player_state.speed_mps = speed_mps
+
 func _surface_grip() -> float:
 	var query := PhysicsRayQueryParameters3D.create(global_position+Vector3.UP*.3,global_position-Vector3.UP)
 	query.exclude = [get_rid()]
@@ -113,6 +120,8 @@ func reset_dynamics() -> void:
 	sim.reset()
 	speed_mps = 0
 	velocity = Vector3.ZERO
+	contact_drift = Vector3.ZERO
+	contact_partners.clear()
 
 func _unhandled_input(event: InputEvent) -> void:
 	if not human_controlled or not physics_ready or not driving_enabled or not event is InputEventKey or not event.pressed or event.echo:

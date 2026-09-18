@@ -3,7 +3,8 @@
 F5 starts a 60-minute practice session automatically, with the player in the first
 configured pit box and the cockpit camera selected. The HUD shows remaining time,
 pit-lane state and the assigned box. At zero it displays SESSION COMPLETE and the
-clock stops. No automatic transition, qualifying rules or race rules exist yet.
+clock stops. F12 opens the combined session/roster panel, where a 10-lap rolling-
+start race can be selected.
 Basic WASD driving and the pit limiter are described in `docs/driving.md`. Speed is
 live; other cockpit telemetry remains placeholder data. Session time follows Godot process time and pauses with
 the scene tree (there is no pause menu yet).
@@ -54,3 +55,42 @@ the other track manifests. See `docs/content_packages.md` for export limitations
 
 Validation: `tools/validate_practice.gd` checks startup, heading, duration/expiry,
 lane membership and transitions, ground collision and mirror repositioning.
+
+## Rolling-start race
+
+A race places the player and roster in a two-wide grid on the back straight. The
+field starts one formation lap at 80 km/h, with 8 m between car centres in each
+lane and 5 m between lanes. AI cars hold their formation groove until the lead AI
+passes the configured release point after Turn 4, then normal pace and racecraft
+take over. The player is never speed-limited or position-controlled by the start
+procedure.
+
+The first start/finish crossing after green begins lap 1. The session finishes
+when the first car completes ten laps. Race standings rank completed laps first,
+then checkpoint progress; practice continues to rank best laps. Grid dimensions,
+pace speed, lap count and the green point live in the track's `session.json`.
+
+Validation: `tools/validate_race_session.gd` checks grid geometry, formation mode,
+the Turn 4 green release, unrestricted player control and the ten-lap finish.
+
+## AI practice pit cycles
+
+Each AI draws an initial departure delay of 4–120 seconds, then runs 6–20
+completed timed laps before taking the next pit entry. The out-lap does not count
+towards the run. Cars follow the last corners, brake into the pit lane and return
+to their assigned box. Once stopped, they wait a fresh random 4–10 minutes and
+start another randomly sized run. The roster seed also makes these choices
+repeatable. Session expiry prevents further departures and calls circulating cars back
+at the next pit entry. Select an AI with 6/7 to see its run target or box countdown.
+
+AI cars ignore car collisions while parked, entering the pits and following the
+pit-exit route, including the merge. Ground and wall collisions remain active.
+Car collisions resume at the end of the exit route, outside the pit-lane region;
+the existing merge traffic check remains active. Racing AI ignore ghosted cars
+in their traffic planning. Race sessions do not use the practice run schedule.
+
+`tools/validate_practice_pits.gd` exercises departure, entry, assigned-box stopping,
+dwell and repeat departure, including collision exceptions and their restoration.
+Pass `-- --bicycle` for the bicycle AI or `-- --natural` for six actual timed laps
+and a return to the last AI box. The default test advances the lap eligibility
+and dwell deadline to exercise the full driving cycle quickly.

@@ -12,6 +12,12 @@ var driving_enabled := false
 var track_data
 var track: Node3D
 var player_state: Node
+## Temporary equal-mass contact model shared by reference AI and bicycle cars.
+const CAR_RESTITUTION := 0.35
+var contact_drift := Vector3.ZERO
+var contact_frame := -1
+var contact_partners: Array[int] = []
+var car_contact_this_step := false
 
 func _ready() -> void:
 	floor_snap_length = .8
@@ -54,16 +60,16 @@ func drive_step(delta: float, throttle: float, brake: float, steering: float) ->
 	forward = forward.normalized()
 	var direction := forward.slide(get_floor_normal()).normalized() if is_on_floor() else forward
 	var fall_speed := minf(velocity.y, 0) - 24.0 * delta
-	velocity = direction * speed_mps
+	contact_drift = contact_drift.move_toward(Vector3.ZERO, 4.0 * delta)
+	velocity = direction * speed_mps + contact_drift
 	if not is_on_floor():
 		velocity.y = fall_speed
 	var previous_position := global_position
-	_try_surface_step(Vector3(velocity.x, 0, velocity.z) * delta)
-	move_and_slide()
+	var hit_static_wall := _move_with_car_contacts(delta)
 	# A wall impact must remove forward speed rather than accumulating throttle.
-	if is_on_wall():
+	if hit_static_wall:
 		speed_mps = velocity.dot(direction)
-	if get_slide_collision_count() > 0:
+	if not car_contact_this_step and get_slide_collision_count() > 0:
 		var travelled_speed := (global_position - previous_position).dot(direction) / maxf(delta, .0001)
 		if absf(travelled_speed) < absf(speed_mps) * .5:
 			speed_mps = travelled_speed
@@ -78,6 +84,68 @@ func drive_step(delta: float, throttle: float, brake: float, steering: float) ->
 		$Visual.basis = $Visual.basis.slerp(slope_basis, minf(1, delta * 10))
 		if has_node("Cockpit"):
 			$Cockpit.basis = $Visual.basis
+
+func _receive_contact_velocity(new_velocity: Vector3) -> void:
+	velocity = new_velocity
+	var forward := -global_basis.z
+	forward.y = 0
+	forward = forward.normalized()
+	speed_mps = new_velocity.dot(forward)
+	contact_drift = Vector3(new_velocity.x,0,new_velocity.z)-forward*speed_mps
+	if player_state != null:
+		player_state.speed_mps = speed_mps
+
+func _move_with_car_contacts(delta: float) -> bool:
+	# CharacterBody sliding treats another car like an immovable wall. Resolve
+	# the closing velocity between cars instead of adopting that zeroed speed.
+	var incoming := velocity
+	car_contact_this_step = false
+	_try_surface_step(Vector3(velocity.x,0,velocity.z)*delta)
+	move_and_slide()
+	apply_floor_snap()
+	var resolved := incoming
+	var static_normals: Array[Vector3] = []
+	var frame := Engine.get_physics_frames()
+	if contact_frame != frame:
+		contact_frame = frame
+		contact_partners.clear()
+	for i in range(get_slide_collision_count()):
+		var collision := get_slide_collision(i)
+		# A single slide can contain both floor and wall/car contacts.
+		for hit in range(collision.get_collision_count()):
+			var other = collision.get_collider(hit)
+			var normal := collision.get_normal(hit)
+			if other == null or not other.has_method("_receive_contact_velocity"):
+				if normal.dot(Vector3.UP) < cos(floor_max_angle):
+					static_normals.append(normal)
+				continue
+			car_contact_this_step = true
+			var id: int = other.get_instance_id()
+			if id in contact_partners:
+				continue
+			# Keep the prototype response horizontal: wheel contact must not
+			# launch cars vertically. Separating contacts receive no impulse.
+			normal.y = 0
+			if normal.length_squared() < .01:
+				continue
+			normal = normal.normalized()
+			var other_velocity: Vector3 = other.velocity
+			var closing := (resolved-other_velocity).dot(normal)
+			if closing < 0:
+				contact_partners.append(id)
+				if other.contact_frame != frame:
+					other.contact_frame = frame
+					other.contact_partners.clear()
+				other.contact_partners.append(get_instance_id())
+				var impulse := normal*(-closing*(1.0+CAR_RESTITUTION)*.5)
+				resolved += impulse
+				other._receive_contact_velocity(other_velocity-impulse)
+	if car_contact_this_step:
+		for normal in static_normals:
+			if resolved.dot(normal) < 0:
+				resolved = resolved.slide(normal)
+		_receive_contact_velocity(resolved)
+	return not static_normals.is_empty()
 
 func _try_surface_step(motion: Vector3) -> void:
 	# The box cannot roll over a mesh edge like a tyre. Allow a small grounded

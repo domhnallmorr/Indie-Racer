@@ -26,7 +26,7 @@ https://www.indycar.com/Schedule/2026/Milwaukee-Race1
 - Pit lane: 10 m wide at full width, 27 marked boxes on its infield side.
 - Pit exit: follows the inside of T1 and T2, then tapers into the backstraight
   apron. The separator wall ends before the merge taper.
-- Start/finish checks, 27 grid marks, basic stands and a pit building.
+- Start/finish checks, a raised starter's flag stand, grandstands and a pit building. Standing-start grid marks are omitted for rolling-start oval racing.
 
 Roads, apron, pit pavement, ground, buildings and walls use static mesh collisions
 through Godot's `-col` import suffix. Paint and other decoration have no collision.

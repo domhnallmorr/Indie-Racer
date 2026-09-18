@@ -10,17 +10,19 @@ remain available through F12. Player handling is unchanged.
 Cars are assigned boxes in pace order, with Casey in the forward box departing
 first. The aligned inside/outside corridor paths act as initial `PASS1`/`PASS2`
 alternatives to `race.lp`: traffic selection and transitions are shared with the
-two-wide prototype, while `race.lp` remains the clean-air pace reference. A 0.985
-passing-speed factor is authored in `racing_corridor.json` to leave a conservative
-margin until alternate-line speed profiles are recorded. Following, blocked
+two-wide prototype, while `race.lp` remains the clean-air pace reference. A 1.02
+passing-speed factor is authored in the game-wide `content/racecraft.json` tuning
+file. Following, blocked
 departure and merge yielding remain active. Driver targets are fixed for repeatable
 comparison; random form and bicycle-era driver ratings do not alter this prototype.
 
 The isolated two-car pace test uses each entry's `icr2_lap_s` in
 `content/rosters/icr2_test/manifest.json`. Casey now targets 21.2 seconds and Finley
-22.8 seconds. This uniformly scales the recorded reference speed profile; it also
-scales the racing speed approached at the end of pit exit. Smaller values mean
-faster pace. The recorded braking/acceleration locations remain the reference.
+22.8 seconds. This scales corner pace in the recorded reference speed profile;
+near top speed it blends to a +/-2% variation around the player reference.
+The same scaling applies at the end of pit exit. Smaller values mean faster pace,
+but these are pace ratings rather than exact lap guarantees. The recorded
+braking/acceleration locations remain the reference.
 The three-minute roster-pace test measured bests of 21.192 s and 22.792 s, with
 zero contacts, pit-limiter compliance and maximum racing line error below 1.05 m.
 Traffic and alternate-line use can prevent these clean-air times.

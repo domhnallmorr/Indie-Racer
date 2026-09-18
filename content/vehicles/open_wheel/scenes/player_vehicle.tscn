@@ -1,11 +1,7 @@
-[gd_scene load_steps=4 format=3]
+[gd_scene load_steps=3 format=3]
 
 [ext_resource type="PackedScene" path="res://content/vehicles/open_wheel/scenes/vehicle.tscn" id="1"]
 [ext_resource type="Script" path="res://game/vehicle/player_bicycle.gd" id="2"]
-[ext_resource type="Script" path="res://game/vehicle/engine_audio.gd" id="3"]
 
 [node name="PlayerVehicle" instance=ExtResource("1")]
 script = ExtResource("2")
-
-[node name="EngineAudio" type="AudioStreamPlayer" parent="."]
-script = ExtResource("3")

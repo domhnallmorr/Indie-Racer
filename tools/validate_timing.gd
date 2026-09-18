@@ -20,6 +20,7 @@ func cross_gate(timing: Node, entry: Dictionary, gate_index: int, at: float, rev
 func validate() -> void:
 	Engine.physics_ticks_per_second = 240
 	Engine.time_scale = 8
+	root.set_meta("roster_selection",{"file":"res://content/rosters/icr2_test/manifest.json","seed":42,"session_mode":"practice"})
 	var main = load("res://game/main/main.tscn").instantiate()
 	root.add_child(main)
 	var timing = main.lap_timing

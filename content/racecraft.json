@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "units": "metres_seconds",
+  "tuning": {
+    "passing_speed_factor": 1.02,
+    "road_edge_speed_start_m": 7.0,
+    "alongside_gap_m": 4.5,
+    "room_status_rear_gap_m": 10.0,
+    "nearby_room_gap_m": 10.0,
+    "room_status_lateral_m": 1.5,
+    "closing_speed_mps": 0.8,
+    "passing_status_gap_m": 10.0,
+    "passing_commit_min_gap_m": 25.0,
+    "passing_commit_max_gap_m": 40.0,
+    "passing_abandon_gap_m": 60.0,
+    "passing_no_progress_s": 50.0,
+    "lane_blend_distance_m": 50.0,
+    "collision_guard_gap_m": 9.0,
+    "collision_guard_gain": 1.4,
+    "green_launch_guard_delay_s": 1.5,
+    "green_launch_lane_hold_s": 6.0,
+    "green_launch_acceleration_mps2": 5.0,
+    "green_launch_acceleration_window_s": 5.0,
+    "green_launch_row_delay_s": 0.1
+  }
+}

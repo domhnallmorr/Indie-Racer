@@ -2,10 +2,10 @@
   "schema_version": 1,
   "type": "vehicle",
   "id": "open_wheel",
-  "display_name": "Open Wheel 95 — Oval",
-  "description": "Low-poly mid-1990s inspired single-seater with shallow oval wings and basic kinematic driving.",
+  "display_name": "Dallara IR-05 — Oval",
+  "description": "Adapted from ccjr's Dallara IR-05 STL, with shallow oval wings, detailed wheels and livery-ready UVs. See ATTRIBUTION.md.",
   "scene": "scenes/vehicle.tscn",
   "units": "metres",
   "visual_only": false,
-  "wheelbase_m": 2.82
+  "wheelbase_m": 3.0
 }

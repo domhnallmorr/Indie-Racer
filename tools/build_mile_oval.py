@@ -186,12 +186,7 @@ for row in range(2):
     for col in range(20):
         ribbon('FinishChecker', FINISH+row*.7, FINISH+(row+1)*.7,
                -10+col, -9+col, WHITE if (row+col)%2 == 0 else ASPHALT, .03)
-for i in range(27):
-    s = FINISH - 15 - (i//2)*12
-    d = -4 if i%2 == 0 else 4
-    ribbon('GridSlot', s, s+.12, d-1.2, d+1.2, WHITE, .025)
-    for edge in [d-1.2, d+1.2]:
-        ribbon('GridSlotSide', s, s+4.5, edge, edge+.1, WHITE, .025)
+# Oval races use rolling starts: no standing-start grid slots.
 for i in range(7):
     box('Grandstand', (FINISH-STRAIGHT/2, -RADIUS-24-i*3, 1.2+i*.9), (260, 3, .5), BLUE if i%2 else CONCRETE)
 box('PitBuilding-col', (20, -58, 4), (160, 18, 8), CONCRETE)

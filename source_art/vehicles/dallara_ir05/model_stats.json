@@ -1,0 +1,19 @@
+{
+  "triangles": 20675,
+  "mesh_objects": 64,
+  "length_m": 5.000002145767212,
+  "width_m": 1.9982000589370728,
+  "height_m": 1.0003206729888916,
+  "wheelbase_m": 3.0,
+  "units": "metres",
+  "paint_uv": "LiveryUV",
+  "livery_resolution": 2048,
+  "paint_parts": 14,
+  "source": "ccjr / Dallara IR-05 / Cults3D 346481",
+  "body_source_vertices": 964,
+  "body_source_triangles": 1003,
+  "front_wing_span_m": 1.62,
+  "front_wing_chord_m": 0.32,
+  "rear_wing_span_m": 1.08,
+  "rear_wing_chord_m": 0.36
+}

@@ -1,5 +1,13 @@
 {
-  "triangles": 2047,
+  "triangles": 29136,
+  "mesh_objects": 49,
+  "length_m": 5.0,
+  "width_m": 2.004199981689453,
+  "height_m": 1.1299999952316284,
+  "wheelbase_m": 3.0,
   "units": "metres",
-  "visual_only": true
+  "paint_uv": "LiveryUV",
+  "livery_resolution": 2048,
+  "paint_parts": 19,
+  "diffuser_rise_m": 0.09
 }

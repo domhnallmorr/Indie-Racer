@@ -410,6 +410,23 @@
       "icr2_lap_s": 21.2
     }
   ],
+  "race_grid": [
+    "Fox",
+    "Hayes",
+    "Wells",
+    "Blake",
+    "Park",
+    "Grant",
+    "Stone",
+    "Lane",
+    "West",
+    "Reed",
+    "Frost",
+    "Ward",
+    "Quinn",
+    "Cole",
+    "Shaw"
+  ],
   "ai_method": "ICR2",
   "description": "Full Club 1996 roster using ICR2 reference driving. Pace interpolated from prior seed-1234 clean-air ranking between Casey 21.2s and Finley 22.8s. Fastest departs first; aligned PASS1/PASS2 corridor passing enabled."
 }

@@ -2,6 +2,8 @@ extends PanelContainer
 var timing: Node
 var rows: Array[Label] = []
 var refresh_time := 0.0
+var title: Label
+var subtitle: Label
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
@@ -15,11 +17,9 @@ func _ready() -> void:
 	add_theme_stylebox_override("panel",style)
 	var column := VBoxContainer.new()
 	add_child(column)
-	var title := Label.new()
-	title.text = "PRACTICE TIMING   •   9 to hide"
+	title = Label.new()
 	column.add_child(title)
-	var subtitle := Label.new()
-	subtitle.text = "Position by best lap • out-lap not counted"
+	subtitle = Label.new()
 	subtitle.add_theme_font_size_override("font_size",12)
 	column.add_child(subtitle)
 	var grid := GridContainer.new()
@@ -54,6 +54,9 @@ func _process(delta: float) -> void:
 		refresh()
 
 func refresh() -> void:
+	var racing: bool = timing.session.session_type == timing.session.SessionType.RACE
+	title.text = ("RACE STANDINGS" if racing else "PRACTICE TIMING")+"   •   9 to hide"
+	subtitle.text = "Position by laps and track progress" if racing else "Position by best lap • out-lap not counted"
 	var sorted: Array = timing.standings()
 	for i in range(sorted.size()):
 		var entry: Dictionary = sorted[i]

@@ -69,7 +69,7 @@ func validate() -> void:
 	camera._unhandled_input(event)
 	if camera.followed_ai != 0:
 		failures.append("Camera did not wrap through field")
-	var following := false
+	var collision_guarded := false
 	var joined := {}
 	var slowest_join := INF
 	var clear_merge_stops := 0
@@ -107,7 +107,7 @@ func validate() -> void:
 				print("Joined %s: %.1f km/h at %.1f s" % [car.name,car.speed_mps*3.6,driver.elapsed])
 			if driver.mode == 1 and driver.merge_committed and car.track.to_local(car.global_position).z < -120 and driver.traffic_reason == "clear" and car.speed_mps < 5:
 				clear_merge_stops += 1
-			following = following or driver.traffic_reason.begins_with("following_")
+			collision_guarded = collision_guarded or driver.traffic_reason.begins_with("collision_guard_")
 			if car.player_state.is_in_pit_speed_zone and car.speed_mps > 80.0/3.6+.01:
 				if not "Pit limiter exceeded" in failures:
 					failures.append("Pit limiter exceeded")
@@ -134,8 +134,8 @@ func validate() -> void:
 		print("%s: laps=%d best=%.3f max_line_error=%.2f" % [timing.name,timing.laps,timing.best,driver.max_line_error_m])
 		if driver.mode != 2 or (not merge_only and timing.laps < 2):
 			failures.append(timing.name+" did not join and complete two timed laps")
-	if not following:
-		failures.append("Field never exercised traffic following")
+	if not collision_guarded:
+		failures.append("Field never exercised the collision guard")
 	if clear_merge_stops > 0:
 		failures.append("Unobstructed AI stopped during committed merge")
 	print("Merge summary: slowest join %.1f km/h; unobstructed stop ticks %d" % [slowest_join,clear_merge_stops])

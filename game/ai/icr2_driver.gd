@@ -9,6 +9,7 @@ var profile_error := ""
 var profile_speed := 0.0
 var requested_speed := 0.0
 var current_line_error := 0.0
+var reference_peak_speed := 0.0
 
 func configure(vehicle: Node3D, race_data: Dictionary, delay: float, record_telemetry: bool = false) -> void:
 	# Parent diagnostic columns describe pedal/tyre controls, so use our own schema.
@@ -46,6 +47,7 @@ func configure(vehicle: Node3D, race_data: Dictionary, delay: float, record_tele
 			push_error(profile_error)
 			return
 		reference_speeds.append(value)
+		reference_peak_speed = maxf(reference_peak_speed,value)
 	pit_profile = pit
 	var entry: Dictionary = car.get_meta("roster_entry")
 	if float(profile.get("reference_lap_s",0)) <= 0 or float(entry.get("icr2_lap_s",0)) <= 0:
@@ -64,14 +66,27 @@ func _physics_process(delta: float) -> void:
 	if car == null or not profile_ready:
 		return
 	elapsed += delta
+	_update_car_collisions()
 	if mode == Mode.WAITING:
-		if elapsed >= release_delay and _departure_clear():
+		if (not practice_cycle or practice_session.status == practice_session.Status.RUNNING) and elapsed >= release_delay and _departure_clear():
 			mode = Mode.PIT_EXIT
 		else:
 			car.reference_step(delta,0,0)
 			return
 	var position: Vector3 = car.track.to_local(car.global_position)
 	_update_index(position)
+	if _update_practice_cycle():
+		return
+	if mode == Mode.FORMATION:
+		var lookahead := clampf(4.0+car.speed_mps*.22,5,22)
+		var formation_target: Vector3 = car.track.to_global(_formation_ahead(lookahead))
+		var formation_offset: Vector3 = car.global_basis.inverse()*(formation_target-car.global_position)
+		formation_offset.y = 0
+		var formation_curvature: float = -2.0*formation_offset.x/maxf(formation_offset.length_squared(),1)
+		desired_speed_kph = formation_speed_kph
+		requested_speed = _traffic_speed(formation_speed_kph/3.6)
+		car.reference_step(delta,requested_speed,formation_curvature)
+		return
 	racecraft.update(self,delta)
 	var points := race if mode == Mode.RACING else route
 	var closest := Geometry3D.get_closest_point_to_segment(position,points[index],points[(index+1)%points.size()])
@@ -88,7 +103,7 @@ func _physics_process(delta: float) -> void:
 	var offset: Vector3 = car.global_basis.inverse()*(target-car.global_position)
 	offset.y = 0
 	var curvature := -2.0*offset.x/maxf(offset.length_squared(),1)
-	profile_speed = _pit_exit_speed() if mode == Mode.PIT_EXIT else _planned_speed()
+	profile_speed = _pit_entry_speed() if mode == Mode.PIT_ENTRY else (_pit_exit_speed() if mode == Mode.PIT_EXIT else _planned_speed())
 	if mode == Mode.RACING:
 		max_line_error_m = maxf(max_line_error_m,current_line_error)
 	if current_line_error > 3:
@@ -112,7 +127,7 @@ func _planned_speed() -> float:
 	if mode == Mode.PIT_EXIT:
 		# Authored route phases; acceleration/braking limits make continuous ramps.
 		var remaining := route_distances[-1]-route_distances[index]
-		var join_speed := reference_speeds[route_join_index]*pace_scale
+		var join_speed := _scaled_reference_speed(reference_speeds[route_join_index])
 		var cruise: float = pit_profile.cruise_kph/3.6
 		var request := lerpf(cruise,join_speed,clampf(1-remaining/float(pit_profile.merge_acceleration_m),0,1))
 		if index < 21:
@@ -121,5 +136,12 @@ func _planned_speed() -> float:
 	var position: Vector3 = car.track.to_local(car.global_position)
 	var segment := race[(index+1)%race.size()]-race[index]
 	var fraction := clampf((position-race[index]).dot(segment)/maxf(segment.length_squared(),.001),0,1)
-	var clean_air_speed := lerpf(reference_speeds[index],reference_speeds[(index+1)%race.size()],fraction)*pace_scale
+	var clean_air_speed := _scaled_reference_speed(lerpf(reference_speeds[index],reference_speeds[(index+1)%race.size()],fraction))
 	return clean_air_speed*racecraft.speed_factor()
+
+func _scaled_reference_speed(reference: float) -> float:
+	# Lap ratings can still separate corner pace, but must not grant the same
+	# percentage of extra top speed. Blend to a +/-2% straight-line variation.
+	var straight_weight := smoothstep(.85,.98,reference/maxf(reference_peak_speed,1.0))
+	var scale := lerpf(pace_scale,clampf(pace_scale,.98,1.02),straight_weight)
+	return reference*scale

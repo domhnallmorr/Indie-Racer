@@ -6,6 +6,7 @@ var preview := Label.new()
 var start := Button.new()
 var paths: Array[String] = []
 var record_ai := CheckButton.new()
+var session_choice := OptionButton.new()
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
@@ -21,8 +22,12 @@ func _ready() -> void:
 	var column := VBoxContainer.new()
 	add_child(column)
 	var title := Label.new()
-	title.text = "AI ROSTER — F12 to close"
+	title.text = "SESSION & AI ROSTER — F12 to close"
 	column.add_child(title)
+	session_choice.add_item("Practice")
+	session_choice.add_item("10-lap rolling-start race")
+	session_choice.select(1 if practice.session_mode == "race" else 0)
+	column.add_child(session_choice)
 	column.add_child(choices)
 	paths = preload("res://game/race/roster_data.gd").discover()
 	for path in paths:
@@ -49,15 +54,19 @@ func _ready() -> void:
 	record_ai.button_pressed = practice.ai_telemetry_enabled
 	record_ai.tooltip_text = "Applies on restart. Player recording remains on F11."
 	column.add_child(record_ai)
-	start.text = "Restart practice with this roster"
+	_update_start_text()
 	column.add_child(start)
 	start.disabled = paths.is_empty()
 	start.pressed.connect(func():
-		get_tree().root.set_meta("roster_selection",{"file":paths[choices.selected],"seed":int(seed_input.value),"ai_telemetry":record_ai.button_pressed})
+		get_tree().root.set_meta("roster_selection",{"file":paths[choices.selected],"seed":int(seed_input.value),"ai_telemetry":record_ai.button_pressed,"session_mode":"race" if session_choice.selected == 1 else "practice"})
 		get_tree().reload_current_scene())
 	choices.item_selected.connect(func(_index): _preview())
+	session_choice.item_selected.connect(func(_index): _update_start_text())
 	_preview()
 	hide()
+
+func _update_start_text() -> void:
+	start.text = "Start 10-lap race" if session_choice.selected == 1 else "Restart practice"
 
 func _preview() -> void:
 	if paths.is_empty():

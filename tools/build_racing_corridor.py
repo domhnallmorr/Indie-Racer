@@ -37,6 +37,8 @@ for x, height, z in race:
                            round(cz + lateral * nz, 5)])
 data = {'schema_version': 1, 'units': 'metres',
         'description': 'Car-centre bounds +/-8 m; two separated PASS1/PASS2 grooves aligned to race_line points. Regenerate after editing the race line.',
-        'passing_speed_factor': .985,
+        # A modest tow lets a committed car finish a move against a closely
+        # matched rival instead of remaining alongside indefinitely.
+        'passing_speed_factor': 1.08,
         'reference_points': race, **paths}
 (folder / 'racing_corridor.json').write_text(json.dumps(data, separators=(',', ':')) + '\n')

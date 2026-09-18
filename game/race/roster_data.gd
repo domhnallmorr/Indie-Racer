@@ -81,7 +81,29 @@ func load_roster(path: String) -> bool:
 			continue
 		entry["spec"] = spec
 		entries.append(entry)
+	if data.has("race_grid"):
+		var grid = data.race_grid
+		var grid_ids := {}
+		if not grid is Array or grid.size() != entries.size():
+			errors.append("race_grid must list every entry exactly once")
+		else:
+			for id in grid:
+				if not id is String or not ids.has(id) or grid_ids.has(id):
+					errors.append("race_grid contains an invalid or duplicate entry")
+					break
+				grid_ids[id] = true
 	return errors.is_empty()
+
+func race_entries() -> Array[Dictionary]:
+	if not data.get("race_grid") is Array:
+		return entries
+	var by_id := {}
+	for entry in entries:
+		by_id[entry.id] = entry
+	var ordered: Array[Dictionary] = []
+	for id in data.race_grid:
+		ordered.append(by_id[id])
+	return ordered
 
 func sample(entry: Dictionary, session_seed: int) -> Dictionary:
 	var rng := RandomNumberGenerator.new()

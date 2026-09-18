@@ -22,7 +22,7 @@ braking just because it is within 85 m. This uses a constant-speed prediction
 (20 m/s minimum for the merging car's initial acceleration); the backstraight
 conflict corridor is still specific to this track.
 
-Telemetry distinguishes `merge_yield_<car>` from `following_<car>`. The full-field
+Telemetry distinguishes `merge_yield_<car>` from `collision_guard_<car>`. The full-field
 test now counts end-of-exit stops before commitment too; the previous check only
 counted unobstructed stops after commitment and missed apron hesitation. Run it
 with `-- --merge-only` to check all 15 departures without the repeated-lap phase.
@@ -36,7 +36,7 @@ checks for unobstructed stops during the lateral merge.
 
 The two AI cars use the same bicycle model, road-contact controller and vehicle physics CFG files as the player, including the current stability assists. `human_controlled=false` disables keyboard/wheel handling and the wheel setup UI. The route driver supplies throttle, brake and steering; it never assigns vehicle speed.
 
-The driver retains the pit-box departure route, 80 km/h geographic limiter, merge checks and simple traffic following. Waiting cars hold the brake. Automatic gearing uses the shared engine and gearbox configuration.
+The driver retains the pit-box departure route, 80 km/h geographic limiter, merge checks and a close-range traffic collision guard. Waiting cars hold the brake. Automatic gearing uses the shared engine and gearbox configuration.
 
 Racing and pit exit have no fixed straight or corner speed caps. Clear straights request full throttle; engine power, gearing and drag determine attainable speed. The geographic pit limiter still takes priority, and the initial manoeuvre out of the stall retains its 55 km/h ceiling. Upcoming corner speeds come from path curvature, tyre grip, mass, downforce and cached road normals for banking. A proportional cornering utilisation of 0.92 reserves capacity for corrections and combined loads. Braking utilisation is 0.80 with a 5-metre margin. Lookahead grows from 200 metres with stopping distance and a two-second speed margin, bounded by one circuit. Steering accounts for the shared speed-sensitive steering range and includes a small allowance for understeer. Actual speed follows from simulated forces; throttle is released whenever braking is requested.
 

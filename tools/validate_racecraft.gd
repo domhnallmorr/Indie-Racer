@@ -17,30 +17,40 @@ func place(car, distance: float, choice: float, speed: float) -> void:
 	var tangent: Vector3 = driver.racecraft.path_point(driver,2,choice)-point
 	car.global_position = car.track.to_global(point+Vector3.UP*.1)
 	car.rotation.y = atan2(-tangent.x,-tangent.z)
-	car.sim.u = speed
-	car.sim.v = 0
-	car.sim.yaw_rate = 0
-	car.sim.gear = 4
+	var simulation = car.get("sim")
+	if simulation != null:
+		simulation.u = speed
+		simulation.v = 0
+		simulation.yaw_rate = 0
+		simulation.gear = 4
 	car.speed_mps = speed
 	car.velocity = -car.global_basis.z*speed
 
 func validate() -> void:
 	Engine.physics_ticks_per_second = 480
 	Engine.time_scale = 8
-	for side in [-1.0,1.0,0.0]:
+	var sides := [-1.0] if "--inside-only" in OS.get_cmdline_user_args() else [-1.0,1.0,0.0]
+	for side in sides:
 		var main = load("res://game/main/main.tscn").instantiate()
-		main.roster_file = "res://content/rosters/default/manifest.json"
+		main.roster_file = "res://content/rosters/icr2_test/manifest.json"
 		root.add_child(main)
-		var fast = main.ai_cars[0]
-		var slow = main.ai_cars[1]
+		var fast = main.ai_cars[1]
+		var slow = main.ai_cars[0]
 		var driver = fast.get_node("Driver")
 		var leader = slow.get_node("Driver")
 		if not driver.racecraft.enabled:
 			failures.append("Corridor failed to load")
 			break
 		# Start an already selected attempt on each side, then let both decide.
-		place(fast,130,0,65)
-		place(slow,195,0,60)
+		# Approach the bend so the current roster's speed difference cannot
+		# complete the entire move on the preceding straight.
+		place(fast,330,0,65)
+		place(slow,395 if side > 0 else 375,0,60)
+		if side < 0:
+			# Exercise an established inside overlap at turn entry separately
+			# from the autonomous pull-out and outside approach fixtures.
+			place(fast,380,-1,65)
+			place(slow,385,0,65)
 		driver.racecraft.target_lane = side
 		if side != 0:
 			driver.racecraft.opponent = slow
@@ -92,7 +102,10 @@ func validate() -> void:
 		print("RACECRAFT side=%+.0f passes=%d aborts=%d overlap=%d corner_overlap=%d contacts=%d clearance=%.2f max_offset=%.2f" % [side,driver.racecraft.passes,driver.racecraft.aborted,overlap_ticks,corner_overlap_ticks,contact_ticks,minimum_clearance,maximum_offset])
 		if driver.racecraft.passes < 1:
 			failures.append("No completed pass on side "+str(side))
-		if overlap_ticks == 0 or corner_overlap_ticks == 0:
+		if overlap_ticks == 0:
+			failures.append("No side-by-side running on side "+str(side))
+		# The stronger outside-line tow can complete the pass before turn entry.
+		if side <= 0 and corner_overlap_ticks == 0:
 			failures.append("No side-by-side corner on side "+str(side))
 		if contact_ticks > 0:
 			failures.append("Vehicle contact on side "+str(side))

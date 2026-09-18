@@ -26,7 +26,9 @@ the overrides makes a profile inherit its racing settings for pit exit.
 Lane changes reserve cornering utilisation at 0.92 from commitment until the car
 has returned to its main groove. This is a separate safety allowance for the
 passing paths; clean-air pace should not be inferred from laps spent in traffic.
-Traffic following also reserves 4.2 m lateral clearance and 0.7 seconds of headway.
+Traffic uses 4.2 m lateral clearance and a close-range collision guard rather than
+a cruise headway. It preserves planned pace until a same-lane car is within the
+configured body-gap reserve, so racecraft can initiate a pass.
 
 `tools/validate_ai_pace.gd` runs 150 simulated seconds at the normal 1/60 s physics
 step, seed 1234. Cars start on track at 65 m/s and are ghosted only in this fixture

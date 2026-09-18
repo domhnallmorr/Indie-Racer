@@ -69,4 +69,6 @@ text = "OVAL 95  |  Static cockpit preview
 1–4: exterior views   5: cockpit
 Cockpit: [ / ] FOV   PgUp / PgDn seat   Home reset
 Exterior: right drag orbit / wheel zoom
+Standalone window: Alt+Enter fullscreen   Esc: windowed
+Godot editor: Game menu → Stretch to Fit
 Dashboard readings are placeholders"

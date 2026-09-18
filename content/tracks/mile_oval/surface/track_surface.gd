@@ -2,15 +2,40 @@
 extends Node3D
 ## Material-only override: imported mesh and physics remain intact.
 var material: ShaderMaterial
+var grass_material: ShaderMaterial
+var wall_materials: Array[ShaderMaterial] = []
 func _ready() -> void:
 	material = ShaderMaterial.new()
 	material.shader = preload("res://content/tracks/mile_oval/surface/asphalt.gdshader")
 	material.set_shader_parameter("track_origin",get_parent().global_position)
+	grass_material = ShaderMaterial.new()
+	grass_material.shader = preload("res://content/tracks/mile_oval/surface/grass.gdshader")
+	grass_material.set_shader_parameter("atlas",preload("res://content/tracks/mile_oval/backstraight/material_atlas.png"))
+	grass_material.set_shader_parameter("track_origin",get_parent().global_position)
+	for outer in [false, true]:
+		var wall_material := ShaderMaterial.new()
+		wall_material.shader = preload("res://content/tracks/mile_oval/surface/walls.gdshader")
+		wall_material.set_shader_parameter("outer_wall", outer)
+		wall_material.set_shader_parameter("world_to_track", get_parent().global_transform.affine_inverse())
+		wall_materials.append(wall_material)
 	_apply(get_parent().get_node("Geometry"))
 func _process(_delta: float) -> void:
 	if Engine.is_editor_hint() and material:
 		material.set_shader_parameter("track_origin",get_parent().global_position)
+		grass_material.set_shader_parameter("track_origin",get_parent().global_position)
+		for wall_material in wall_materials:
+			wall_material.set_shader_parameter("world_to_track", get_parent().global_transform.affine_inverse())
 func _apply(node: Node) -> void:
+	if node is MeshInstance3D:
+		# Legacy imported standing-start markings; also omitted by the generator.
+		if str(node.name).begins_with("GridSlot"):
+			node.hide()
+		if str(node.name).begins_with("OuterWall"):
+			node.material_override = wall_materials[1]
+		elif str(node.name).begins_with("InnerWall") or str(node.name).begins_with("PitSeparator"):
+			node.material_override = wall_materials[0]
+	if node is MeshInstance3D and str(node.name).begins_with("Ground"):
+		node.material_override = grass_material
 	if node is MeshInstance3D and (str(node.name).begins_with("RacingSurface") or str(node.name).begins_with("Apron") or str(node.name).begins_with("PitLane")):
 		node.material_override = material
 	for child in node.get_children():

@@ -68,8 +68,29 @@ func invalidate(car: Node3D) -> void:
 			entry.expected = 0
 			entry.previous = track.to_local(car.global_position)
 
+func reset_for_race() -> void:
+	clock = 0.0
+	for entry in entries:
+		entry.previous = track.to_local(entry.car.global_position)
+		entry.armed = false
+		entry.expected = 0
+		entry.started = 0.0
+		entry.laps = 0
+		entry.best = 0.0
+		entry.last = 0.0
+
 func standings() -> Array[Dictionary]:
 	var sorted := entries.duplicate()
+	if session != null and session.session_type == session.SessionType.RACE:
+		sorted.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+			if a.laps != b.laps:
+				return a.laps > b.laps
+			var a_progress: int = 4 if a.expected == 0 and a.armed else int(a.expected)
+			var b_progress: int = 4 if b.expected == 0 and b.armed else int(b.expected)
+			if a_progress != b_progress:
+				return a_progress > b_progress
+			return a.order < b.order)
+		return sorted
 	sorted.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
 		if a.best == b.best:
 			return a.order < b.order

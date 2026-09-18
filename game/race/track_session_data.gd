@@ -10,6 +10,13 @@ var speed_zone := PackedVector2Array()
 var speed_limit_kph := 80.0
 var speed_exit_x := 195.0
 var pit_sections: Array[Rect2] = []
+var race_laps := 10
+var pace_speed_kph := 80.0
+var grid_origin := Vector3(150.0,0.025,-125.0)
+var grid_heading_deg := 90.0
+var grid_row_spacing_m := 8.0
+var grid_lane_spacing_m := 5.0
+var green_point := Vector3(-250.0,0.0,125.0)
 const PIT_SECTION_SEGMENTS := 20
 
 func load_config(path: String) -> Error:
@@ -21,6 +28,24 @@ func load_config(path: String) -> Error:
 	var data = JSON.parse_string(FileAccess.get_file_as_string(path))
 	if not data is Dictionary or data.get("schema_version") != 1 or data.get("units") != "metres":
 		return ERR_INVALID_DATA
+	var race: Variant = data.get("race",{})
+	if not race is Dictionary:
+		return ERR_INVALID_DATA
+	if not race.is_empty():
+		if not _number(race.get("laps")) or int(race.laps) < 1 or not _number(race.get("pace_speed_kph")) or float(race.pace_speed_kph) <= 0:
+			return ERR_INVALID_DATA
+		var grid: Variant = race.get("grid")
+		if not grid is Dictionary or not _numbers(grid.get("origin"),3) or not _number(grid.get("heading_deg")) or not _number(grid.get("row_spacing_m")) or not _number(grid.get("lane_spacing_m")):
+			return ERR_INVALID_DATA
+		if float(grid.row_spacing_m) <= 0 or float(grid.lane_spacing_m) <= 0 or not _numbers(race.get("green_point"),3):
+			return ERR_INVALID_DATA
+		race_laps = int(race.laps)
+		pace_speed_kph = float(race.pace_speed_kph)
+		grid_origin = Vector3(grid.origin[0],grid.origin[1],grid.origin[2])
+		grid_heading_deg = float(grid.heading_deg)
+		grid_row_spacing_m = float(grid.row_spacing_m)
+		grid_lane_spacing_m = float(grid.lane_spacing_m)
+		green_point = Vector3(race.green_point[0],race.green_point[1],race.green_point[2])
 	var boxes = data.get("pit_boxes")
 	var lane = data.get("pit_lane")
 	if not boxes is Array or boxes.is_empty() or not lane is Dictionary:
@@ -85,6 +110,14 @@ func pit_box_transform(index: int = 0) -> Transform3D:
 	var box: Dictionary = pit_boxes[index]
 	var p: Array = box.position
 	return Transform3D(Basis(Vector3.UP, deg_to_rad(box.heading_deg)), Vector3(p[0], p[1], p[2]))
+
+func grid_transform(index: int) -> Transform3D:
+	var basis := Basis(Vector3.UP,deg_to_rad(grid_heading_deg))
+	var forward := -basis.z
+	var right := basis.x
+	var row := index / 2
+	var side := -0.5 if index % 2 == 0 else 0.5
+	return Transform3D(basis,grid_origin-forward*row*grid_row_spacing_m+right*side*grid_lane_spacing_m)
 
 func contains_pit_lane(local_position: Vector3) -> bool:
 	if local_position.y < min_height or local_position.y > max_height:
