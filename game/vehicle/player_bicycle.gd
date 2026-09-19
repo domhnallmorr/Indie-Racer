@@ -50,6 +50,15 @@ func _physics_process(delta: float) -> void:
 func drive_step(delta: float, throttle_input: float, brake_input: float, steering: float) -> void:
 	if not physics_ready:
 		return
+	# The base chassis mass is dry; fuel adds to the dynamic model only for the
+	# player while the AI fuel/strategy pass is still pending.
+	sim.set_vehicle_mass(parameters.values.mass_kg+player_state.fuel_mass_kg())
+	if not player_state.has_fuel():
+		throttle_input = 0.0
+	if player_state.pit_stall_state in [player_state.StallState.STOPPED,player_state.StallState.SERVICING]:
+		throttle_input = 0.0
+		brake_input = 1.0
+		steering = 0.0
 	update_zone_state()
 	var normal := get_floor_normal() if is_on_floor() else Vector3.UP
 	if normal.length_squared() < .5:
@@ -86,14 +95,9 @@ func drive_step(delta: float, throttle_input: float, brake_input: float, steerin
 		sim.v = planar.y
 	speed_mps = Vector2(sim.u,sim.v).length()*(-1.0 if sim.u < 0 else 1.0)
 	player_state.speed_mps = speed_mps
+	player_state.consume_distance(Vector2(travelled.x,travelled.z).length()*delta)
 	telemetry.record(self, delta, Vector3(throttle_input, brake_input, steering), normal, gravity_components, grip, grounded, travelled)
-	if is_on_floor():
-		var local_normal := global_basis.inverse()*get_floor_normal()
-		var right := local_normal.cross(Vector3.BACK).normalized()
-		var tilt := Basis(right,local_normal,right.cross(local_normal).normalized()).orthonormalized()
-		$Visual.basis = $Visual.basis.slerp(tilt,minf(1,delta*10))
-		if has_node("Cockpit"):
-			$Cockpit.basis = $Visual.basis
+	_update_visual_grounding(delta)
 
 func _receive_contact_velocity(new_velocity: Vector3) -> void:
 	velocity = new_velocity
@@ -117,6 +121,7 @@ func _surface_grip() -> float:
 	return 1.0
 
 func reset_dynamics() -> void:
+	_reset_visual_grounding()
 	sim.reset()
 	speed_mps = 0
 	velocity = Vector3.ZERO
@@ -124,6 +129,8 @@ func reset_dynamics() -> void:
 	contact_partners.clear()
 
 func _unhandled_input(event: InputEvent) -> void:
+	if player_state != null and player_state.pit_stall_state == player_state.StallState.STOPPED:
+		return
 	if not human_controlled or not physics_ready or not driving_enabled or not event is InputEventKey or not event.pressed or event.echo:
 		return
 	match event.keycode:

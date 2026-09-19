@@ -27,6 +27,7 @@ func _ready() -> void:
 	box.add_child(title)
 	var notice := Label.new()
 	notice.text = "CAR HELD ON BRAKES WHILE SETUP IS OPEN\nValues below preview inputs. Enable controls, then close to drive."
+	notice.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	box.add_child(notice)
 	enabled = CheckButton.new()
 	enabled.text = "Enable calibrated wheel and pedals"
@@ -48,11 +49,20 @@ func _ready() -> void:
 	box.add_child(clear)
 	var close := Button.new()
 	close.text = "Close setup and return to driving (F10)"
-	close.pressed.connect(func(): capture = ""; panel.hide())
+	close.pressed.connect(_close_setup)
 	box.add_child(close)
 	status = Label.new()
+	status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	box.add_child(status)
 	panel.hide()
+
+func _close_setup() -> void:
+	capture = ""
+	var race_ui = player.get_parent().get_node_or_null("HUD/RaceUI") if is_instance_valid(player) else null
+	if race_ui != null:
+		race_ui.close_shell()
+	else:
+		panel.hide()
 
 func _save() -> void:
 	var config := ConfigFile.new()
@@ -78,10 +88,14 @@ func _begin(control: String) -> void:
 
 func _input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_F10:
-		panel.visible = not panel.visible
 		capture = ""
+		var race_ui = player.get_parent().get_node_or_null("HUD/RaceUI") if is_instance_valid(player) else null
+		if race_ui != null:
+			race_ui.toggle_page("controls")
+		else:
+			panel.visible = not panel.visible
 		get_viewport().set_input_as_handled()
-	if panel.visible:
+	if panel.is_visible_in_tree():
 		if not capture.is_empty() and event is InputEventJoypadMotion and samples.is_empty():
 			var key := Vector2i(event.device, event.axis)
 			if absf(event.axis_value - float(origins.get(key, 0))) > 0.25:
@@ -93,6 +107,8 @@ func _input(event: InputEvent) -> void:
 		if event is InputEventKey or event is InputEventJoypadButton or event is InputEventJoypadMotion:
 			get_viewport().set_input_as_handled()
 	elif enabled.button_pressed and event is InputEventJoypadButton and event.pressed and is_instance_valid(player):
+		if not player.driving_enabled or player.player_state.pit_stall_state == player.player_state.StallState.STOPPED:
+			return
 		for control in ["shift_up", "shift_down"]:
 			var binding: Dictionary = bindings.get(control, {})
 			if event.device == _device(binding) and event.button_index == binding.get("button", -1):
@@ -137,7 +153,7 @@ func axis_value(control: String) -> float:
 	return normalize_axis(Input.get_joy_axis(device, binding.axis), binding.positions, control == "steer")
 
 func controls() -> Vector3:
-	if panel.visible:
+	if panel.is_visible_in_tree():
 		return Vector3(0, 1, 0)
 	var keyboard := Vector3(Input.get_action_strength("drive_accelerate"), Input.get_action_strength("drive_brake"), Input.get_axis("drive_right", "drive_left"))
 	if not enabled.button_pressed:
@@ -146,7 +162,7 @@ func controls() -> Vector3:
 	return Vector3(maxf(keyboard.x, axis_value("throttle")), maxf(keyboard.y, axis_value("brake")), keyboard.z if absf(keyboard.z) > 0 else axis_value("steer"))
 
 func _process(_delta: float) -> void:
-	if not panel.visible:
+	if not panel.is_visible_in_tree():
 		return
 	var names: Array[String] = []
 	for device in Input.get_connected_joypads():

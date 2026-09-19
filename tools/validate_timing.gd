@@ -45,26 +45,26 @@ func validate() -> void:
 	check(not entry.armed and entry.laps == 2 and entry.best == 10,"Reset preserves results and invalidates current lap")
 	check(timing.standings()[0].name == "Player","Practice ranks timed driver first")
 	check(timing.format_lap(119.9999) == "2:00.000","Millisecond rollover formatting")
+	# Test lap timing independently of the randomized seven-minute departure window.
+	for i in range(main.ai_cars.size()):
+		main.ai_cars[i].get_node("Driver").release_delay = float(i)*6.0
 	# Restore player results before live simulation and render.
 	entry.laps = 0
 	entry.last = 0.0
 	entry.best = 0.0
-	var panel = main.get_node("HUD/TimingPanel")
-	var key := InputEventKey.new()
-	key.keycode = KEY_9
-	key.pressed = true
-	panel._unhandled_input(key)
-	check(panel.visible,"9 opens panel")
-	panel._unhandled_input(key)
-	check(not panel.visible,"9 hides panel")
+	var race_ui = main.get_node("HUD/RaceUI")
+	var panel = race_ui.get_node("Shell/Layout/Content/Pages/TimingPanel")
+	race_ui.toggle_page("timing")
+	check(race_ui.visible and panel.visible,"9 opens timing screen")
+	race_ui.toggle_page("timing")
+	check(not race_ui.visible,"9 hides timing screen")
 	for i in range(3000):
 		await physics_frame
 	for i in [1,2]:
 		var result: Dictionary = timing.entries[i]
 		check(result.laps >= 1 and result.best > 20 and result.best < 45,"AI completes a plausible timed lap: "+result.name)
 		print("%s laps=%s best=%s last=%s" % [result.name,result.laps,timing.format_lap(result.best),timing.format_lap(result.last)])
-	panel.show()
-	panel.refresh()
+	race_ui.open_page("timing")
 	if DisplayServer.get_name() != "headless":
 		await process_frame
 		await RenderingServer.frame_post_draw

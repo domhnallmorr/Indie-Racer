@@ -26,11 +26,14 @@ func capture() -> void:
 				for uv in arrays[Mesh.ARRAY_TEX_UV]:
 					assert(uv.x >= -0.001 and uv.y >= -0.001 and uv.x <= 1.001 and uv.y <= 1.001)
 	var size := high-low
-	assert(absf(size.z-5.0)<0.015 and absf(size.x-2.0)<0.015)
+	assert(absf(size.z-4.775)<0.015 and absf(size.x-2.0)<0.015)
 	var front = car.find_child("WheelFrontLeft",true,false)
 	var rear = car.find_child("WheelRearLeft",true,false)
 	assert(front != null and rear != null)
 	assert(absf(front.global_position.z-rear.global_position.z+3.0)<0.001)
+	assert(absf(front.global_position.z+1.242882)<0.001)
+	assert(absf(rear.global_position.z-1.757118)<0.001)
+	assert(absf(front.global_position.z-low.z-1.032118)<0.002)
 	assert(paint_count == 14)
 	for wing_name in ["FrontWing","RearWing"]:
 		var wing = car.find_child(wing_name,true,false)

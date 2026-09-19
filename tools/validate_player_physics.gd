@@ -24,6 +24,7 @@ func validate() -> void:
 	main.ai_enabled = false
 	root.add_child(main)
 	var car = main.player
+	car.player_state.request_departure()
 	car.driving_enabled = false
 	check(car.physics_ready,"Player loads new physics")
 	place(car,Vector3(-60,.025,101),-PI/2)

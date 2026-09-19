@@ -8,6 +8,7 @@ var active := false
 var rear_cameras: Array[Camera3D] = []
 var rear_local_poses: Array[Transform3D] = []
 var dashboard_view: SubViewport
+var virtual_mirror: PanelContainer
 
 func _ready() -> void:
 	position = get_parent().get_node("Visual").get_meta("cockpit_offset",Vector3.ZERO)
@@ -16,6 +17,8 @@ func _ready() -> void:
 	var exterior_nose = get_parent().get_node("Visual").find_child("Nose",true,false)
 	for mesh in interior.find_children("*", "MeshInstance3D", true, false):
 		mesh.layers = 4
+		if mesh.name.begins_with("Mirror"):
+			mesh.hide()
 		if mesh.name.begins_with("Instrument"):
 			mesh.scale.x *= get_parent().get_node("Visual").get_meta("dashboard_width_scale",1.0)
 			mesh.scale.y *= get_parent().get_node("Visual").get_meta("dashboard_width_scale",1.0)
@@ -52,29 +55,59 @@ func _ready() -> void:
 	dashboard.player = get_parent()
 	display.add_child(dashboard)
 	_surface("Dashboard", Vector3(0,.59,-.242), Vector2(.44,.22), display, false)
-	for side in [-1,1]:
-		var mirror := SubViewport.new()
-		mirror.size = Vector2i(384,160)
-		mirror.world_3d = get_viewport().world_3d
-		# Only the main camera listens; mirror views must not duplicate spatial audio.
-		mirror.audio_listener_enable_3d = false
-		mirror.render_target_update_mode = SubViewport.UPDATE_DISABLED
-		add_child(mirror)
-		mirror_views.append(mirror)
-		var rear := Camera3D.new()
-		rear.position = Vector3(side*.39,.68,-.42)
-		rear.rotation.y = PI + side*.12
-		rear.fov = 55
-		rear.near = .08
-		rear.far = 1500
-		rear.cull_mask = 1
-		mirror.add_child(rear)
-		rear_cameras.append(rear)
-		rear_local_poses.append(rear.transform)
-		rear.global_transform = global_transform * rear.transform
-		rear.current = true
-		_surface("Mirror",Vector3(side*.39,.68,-.377),Vector2(.223,.093),mirror,true)
+	var mirror := SubViewport.new()
+	mirror.name = "VirtualMirrorView"
+	mirror.size = Vector2i(960, 180)
+	mirror.world_3d = get_viewport().world_3d
+	# Only the main camera listens; the mirror must not duplicate spatial audio.
+	mirror.audio_listener_enable_3d = false
+	mirror.render_target_update_mode = SubViewport.UPDATE_DISABLED
+	add_child(mirror)
+	mirror_views.append(mirror)
+	var rear := Camera3D.new()
+	rear.name = "VirtualMirrorCamera"
+	rear.position = Vector3(0, .90, .28)
+	rear.rotation.y = PI
+	# A wide horizontal field of view, independent of cockpit seat/FOV changes.
+	rear.keep_aspect = Camera3D.KEEP_WIDTH
+	rear.fov = 100
+	rear.near = .08
+	rear.far = 1500
+	rear.cull_mask = 1
+	mirror.add_child(rear)
+	rear_cameras.append(rear)
+	rear_local_poses.append(rear.transform)
+	rear.global_transform = global_transform * rear.transform
+	rear.current = true
+	_add_virtual_mirror(mirror)
 	activate()
+
+func _add_virtual_mirror(view: SubViewport) -> void:
+	var overlay := CanvasLayer.new()
+	overlay.name = "VirtualMirrorOverlay"
+	overlay.layer = -1 # Below the race menus and HUD, above the 3D world.
+	add_child(overlay)
+	virtual_mirror = PanelContainer.new()
+	virtual_mirror.name = "VirtualMirror"
+	overlay.add_child(virtual_mirror)
+	virtual_mirror.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
+	virtual_mirror.offset_left = -246
+	virtual_mirror.offset_right = 246
+	virtual_mirror.offset_top = 18
+	virtual_mirror.offset_bottom = 120
+	virtual_mirror.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var frame := StyleBoxFlat.new()
+	frame.bg_color = Color(0.015, 0.015, 0.018)
+	frame.set_corner_radius_all(10)
+	frame.set_content_margin_all(6)
+	virtual_mirror.add_theme_stylebox_override("panel", frame)
+	var image := TextureRect.new()
+	image.texture = view.get_texture()
+	image.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	image.stretch_mode = TextureRect.STRETCH_SCALE
+	image.flip_h = true
+	image.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	virtual_mirror.add_child(image)
 
 func _process(_delta: float) -> void:
 	# SubViewport cameras do not inherit the car transform. Follow spawn/repositioning.
@@ -104,6 +137,7 @@ func _surface(label: String, pos: Vector3, dimensions: Vector2, viewport: SubVie
 
 func activate() -> void:
 	active = true
+	virtual_mirror.show()
 	camera.make_current()
 	dashboard_view.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	for mirror in mirror_views:
@@ -111,18 +145,22 @@ func activate() -> void:
 
 func deactivate() -> void:
 	active = false
+	virtual_mirror.hide()
 	dashboard_view.render_target_update_mode = SubViewport.UPDATE_DISABLED
 	for mirror in mirror_views:
 		mirror.render_target_update_mode = SubViewport.UPDATE_DISABLED
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed:
-		if event.keycode == KEY_5:
+		var key: Key = event.keycode
+		if event.physical_keycode in [KEY_KP_ADD,KEY_KP_SUBTRACT]:
+			key = event.physical_keycode
+		if key == KEY_5:
 			activate()
-		elif event.keycode in [KEY_1, KEY_2, KEY_3, KEY_4, KEY_6, KEY_7]:
+		elif key in [KEY_1, KEY_2, KEY_3, KEY_4, KEY_6, KEY_7, KEY_T, KEY_KP_ADD, KEY_KP_SUBTRACT]:
 			deactivate()
 		elif active:
-			match event.keycode:
+			match key:
 				KEY_BRACKETLEFT: camera.fov = maxf(45, camera.fov - 2)
 				KEY_BRACKETRIGHT: camera.fov = minf(85, camera.fov + 2)
 				KEY_PAGEUP: camera.position.y = minf(.94, camera.position.y + .01)

@@ -168,3 +168,32 @@ are not guaranteed recoverable. Wider fields, different seeds, car dimensions an
 new tracks need further validation. Race-line error can legitimately exceed the
 old five-metre threshold during a pass; road-centre clearance is the field safety
 metric now, while the isolated reference run still checks the ideal line.
+
+## Race pack release (September 2026)
+
+The green-start lane hold now ends after its configured timer, even with a car
+alongside. Steering blends out of the physical formation lane while the normal
+lane planner and side-room correction remain active. Collision avoidance checks
+the actual protected steering path rather than only the desired passing lane;
+3.1 m lateral separation at both the current position and planned path permits
+independent pace. Same-lane braking and occupied-lane checks remain active.
+
+If a trailing car stays beside the same neighbour for six seconds with less than
+0.5 m/s relative speed, it can ease off by 1.5 m/s for up to four seconds. A
+16-second cooldown prevents repeated yielding; car names break a dead-even tie.
+This only creates longitudinal room: it does not authorize a lane change through
+another car. The normal pass planner can try again once a safe opportunity exists.
+
+The seed-1234, 15-car diagnostic over 150 seconds after green recorded zero
+AI-to-AI contact frames and all cars released their launch constraint. Casey
+Grant's latest lap improved from 24.256 s in the previous traffic run to 21.993 s,
+matching its prior clear-track pace. This is one automated race configuration,
+not a guarantee for every grid or player interaction. The roster was unchanged.
+
+Checks: `validate_pack_release.gd` covers transient and sustained overlap,
+one-sided yielding, cooldown, launch release and same-lane protection;
+`validate_ai_safety.gd`, `validate_racecraft_rules.gd` and `validate_green_launch.gd`
+cover braking, lane occupancy and the start. The live inside-pass scenario also
+completed without contact, with minimum overlap separation of 3.28 m.
+`diagnose_race_pace.gd` now records contact frames, yield ticks and launch weight
+alongside its lap times and traffic-guard statistics.

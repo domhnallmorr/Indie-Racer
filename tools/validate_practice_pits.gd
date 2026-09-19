@@ -19,7 +19,7 @@ func validate() -> void:
 	for other in main.ai_cars:
 		var d = other.get_node("Driver")
 		check(d.stint_laps >= 6 and d.stint_laps <= 20,"Lap range")
-		check(d.release_delay >= 4 and d.release_delay <= 120,"Initial departure range")
+		check(d.release_delay >= 0 and d.release_delay <= 420,"Initial departure range")
 		check(other.get_collision_exceptions().has(main.player),"Parked AI ignores player")
 		if other != car:
 			d.set_physics_process(false)

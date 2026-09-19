@@ -18,6 +18,7 @@ position = Vector3(0, 0.32, 0.06)
 shape = SubResource("BodyShape")
 
 [node name="Visual" parent="." instance=ExtResource("1")]
+metadata/tyre_contacts = PackedVector3Array(-0.715, 0, -1.242882, -0.823, 0, 1.757118, 0.715, 0, -1.242882, 0.823, 0, 1.757118)
 metadata/cockpit_offset = Vector3(0, -0.13, -0.217)
 metadata/dashboard_width_scale = 0.72
 metadata/dashboard_rearward_offset = 0.10

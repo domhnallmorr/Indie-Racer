@@ -3,6 +3,10 @@ extends "res://game/ai/oval_driver.gd"
 ## Reuses departure geometry, merge checks and progress tracking, not tyre physics.
 var reference_speeds := PackedFloat64Array()
 var pace_scale := 1.0
+var reference_lap_s := 0.0
+var base_lap_target_s := 0.0
+# Provisional player-data calibration: 35 gal / 105 kg cost 0.764 s per lap.
+const FUEL_PACE_PENALTY_S_PER_GAL := 0.0218
 var profile_ready := false
 var pit_profile: Dictionary = {}
 var profile_error := ""
@@ -54,7 +58,9 @@ func configure(vehicle: Node3D, race_data: Dictionary, delay: float, record_tele
 		profile_error = "ICR2 lap targets must be positive"
 		push_error(profile_error)
 		return
-	pace_scale = profile.reference_lap_s/float(entry.get("icr2_lap_s",profile.reference_lap_s))
+	reference_lap_s = float(profile.reference_lap_s)
+	base_lap_target_s = float(entry.get("icr2_lap_s",reference_lap_s))
+	pace_scale = reference_lap_s/base_lap_target_s
 	profile_ready = true
 	if record_telemetry:
 		DirAccess.make_dir_recursive_absolute("user://telemetry")
@@ -66,10 +72,17 @@ func _physics_process(delta: float) -> void:
 	if car == null or not profile_ready:
 		return
 	elapsed += delta
+	if race_pit_cycle and race_plan.update(self,delta):
+		return
+	if _update_race_service():
+		car.reference_step(delta,0,0)
+		return
 	_update_car_collisions()
 	if mode == Mode.WAITING:
-		if (not practice_cycle or practice_session.status == practice_session.Status.RUNNING) and elapsed >= release_delay and _departure_clear():
+		if (not (practice_cycle or race_pit_cycle) or practice_session.status == practice_session.Status.RUNNING) and elapsed >= release_delay and _departure_clear():
 			mode = Mode.PIT_EXIT
+			if practice_cycle or race_pit_cycle:
+				car.player_state.request_departure()
 		else:
 			car.reference_step(delta,0,0)
 			return
@@ -140,8 +153,18 @@ func _planned_speed() -> float:
 	return clean_air_speed*racecraft.speed_factor()
 
 func _scaled_reference_speed(reference: float) -> float:
-	# Lap ratings can still separate corner pace, but must not grant the same
-	# percentage of extra top speed. Blend to a +/-2% straight-line variation.
+	# Driver ratings retain their guarded straight-line variation. Fuel is a
+	# shared car effect, so its time-derived scale applies across the profile.
 	var straight_weight := smoothstep(.85,.98,reference/maxf(reference_peak_speed,1.0))
-	var scale := lerpf(pace_scale,clampf(pace_scale,.98,1.02),straight_weight)
-	return reference*scale
+	var driver_scale := lerpf(pace_scale,clampf(pace_scale,.98,1.02),straight_weight)
+	var fuel_scale := base_lap_target_s/maxf(.001,target_lap_s())
+	return reference*driver_scale*fuel_scale
+
+func fuel_pace_penalty_s() -> float:
+	return maxf(0.0,car.player_state.fuel_gal)*FUEL_PACE_PENALTY_S_PER_GAL
+
+func target_lap_s() -> float:
+	return base_lap_target_s+fuel_pace_penalty_s()
+
+func effective_pace_scale() -> float:
+	return reference_lap_s/maxf(.001,target_lap_s())

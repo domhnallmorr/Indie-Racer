@@ -34,6 +34,7 @@ def point(v):
 
 front_y=point((0,FRONT_RAW,0)).y
 rear_y=point((0,REAR_RAW,0)).y
+NOSE_SHORTEN_M=.225
 # Explicit mapping is tied to the archived source file, sorted by component size.
 road_wings={3,4,11,12,16,21,22,23,24,27,28,29,38,39,66,67}
 old_wheels={5,6,7,8,34,35,36,37,41,42,43,44,50,51,52,53,55,56,57,58}
@@ -49,6 +50,9 @@ for i,obj in enumerate(parts):
         continue
     for v in obj.data.vertices:
         v.co=point(v.co)
+        # Compress only the body ahead of the front axle; keep chassis and suspension fixed.
+        if i==1 and v.co.y>front_y:
+            v.co.y-=NOSE_SHORTEN_M*(v.co.y-front_y)/(2.5-front_y)
     bm=bmesh.new();bm.from_mesh(obj.data)
     bmesh.ops.remove_doubles(bm,verts=list(bm.verts),dist=.00001)
     bmesh.ops.dissolve_degenerate(bm,edges=list(bm.edges),dist=.000001)
@@ -96,14 +100,13 @@ def oval_wing(name,span,center_y,height,chord):
     verts=[(x,center_y+chord*(.5-t),height+z) for x in [-span/2,span/2] for t,z in profile]
     return mesh(name,verts,[tuple(reversed(range(n))),tuple(range(n,2*n))]+[(i,(i+1)%n,(i+1)%n+n,i+n) for i in range(n)],WHITE,True)
 
-oval_wing('FrontWing',1.62,2.26,.143,.32)
+oval_wing('FrontWing',1.62,2.26-NOSE_SHORTEN_M,.143,.32)
 oval_wing('RearWing',1.08,-2.30,.83,.36)
 for side,label in [(-1,'Left'),(1,'Right')]:
-    box('FrontEndplate'+label,(side*.81,2.26,.17),(.014,.36,.16),PAINT,.004)
+    box('FrontEndplate'+label,(side*.81,2.26-NOSE_SHORTEN_M,.17),(.014,.36,.16),PAINT,.004)
     box('RearEndplate'+label,(side*.547,-2.30,.79),(.014,.40,.25),PAINT,.005)
-    box('FrontWingPylon'+label,(side*.06,2.22,.19),(.021,.11,.105),CARBON,.003)
+    box('FrontWingPylon'+label,(side*.06,2.22-NOSE_SHORTEN_M,.19),(.021,.11,.105),CARBON,.003)
     box('RearWingStay'+label,(side*.16,-2.19,.565),(.025,.105,.53),CARBON,.005)
-    rod('RearWingBrace'+label,(side*.16,-2.18,.45),(side*.40,-2.28,.81),.01,METAL)
 
 # Preserve the original body's complete bounds and topology in the build report.
 body_vertices=len(body.data.vertices)
@@ -111,6 +114,7 @@ body_triangles=len(body.data.polygons)
 # Shared livery atlas, export and studio rig. No use of the generic body construction.
 tail=shared.split('# One globally packed UV atlas')[1]
 tail='# One globally packed UV atlas'+tail
+tail=tail.replace("assert abs(dims[1]-5.0)<.015,dims","assert abs(dims[1]-(5.0-NOSE_SHORTEN_M))<.015,dims")
 # Imported parts lack a source shader multiply node; this section creates it as usual.
 tail=tail.replace("assert abs(dims[0]-2.0)<.015,dims","assert abs(dims[0]-2.0)<.015,dims")
 tail=tail.replace("assert abs(bpy.data.objects['WheelFrontLeft'].location.y-bpy.data.objects['WheelRearLeft'].location.y-3.0)<1e-6","assert abs(bpy.data.objects['WheelFrontLeft'].location.y-bpy.data.objects['WheelRearLeft'].location.y-3.0)<1e-6")
@@ -118,6 +122,7 @@ tail=tail.replace("assert abs(bpy.data.objects['WheelFrontLeft'].location.y-bpy.
 tail=tail.replace("'diffuser_rise_m':.09","'source':'ccjr / Dallara IR-05 / Cults3D 346481','body_source_vertices':body_vertices,'body_source_triangles':body_triangles,'front_wing_span_m':1.62,'front_wing_chord_m':.32,'rear_wing_span_m':1.08,'rear_wing_chord_m':.36")
 # Save working model separately from the rejected generic model.
 tail=tail.replace("SOURCE/'open_wheel.blend'","SOURCE/'ir05_oval.blend'")
+tail=tail.replace("'wheelbase_m':3.0","'wheelbase_m':3.0,'nose_shortened_m':NOSE_SHORTEN_M,'nose_overhang_m':2.5-NOSE_SHORTEN_M-front_y")
 exec(compile(tail,'<shared UV export and preview>','exec'))
 # Neutral review images let the source silhouette and wing changes speak for themselves.
 scene.render.engine='BLENDER_WORKBENCH'

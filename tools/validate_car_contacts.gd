@@ -38,6 +38,11 @@ func validate() -> void:
 		car.set_physics_process(false)
 		if car.has_node("Driver"):
 			car.get_node("Driver").set_physics_process(false)
+		# The practice spawn now ghosts pit cars. These scenarios explicitly test
+		# racing contacts, so remove inherited pit exceptions after disabling AI.
+		for other in cars:
+			if other != car:
+				car.remove_collision_exception_with(other)
 	var floor_body := StaticBody3D.new()
 	var floor_shape := CollisionShape3D.new()
 	var box := BoxShape3D.new()

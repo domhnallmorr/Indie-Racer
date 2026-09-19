@@ -11,7 +11,7 @@ func validate() -> void:
 	for car in main.ai_cars:
 		assert(car.get_node("Driver").diagnostic == null, "Default field must not open telemetry files")
 	assert(main.has_node("HUD/FPSCounter"))
-	assert(not main.get_node("HUD/RosterPanel").record_ai.button_pressed)
+	assert(not main.get_node("HUD/RaceUI/Shell/Layout/Content/Pages/RosterPanel").record_ai.button_pressed)
 	assert(not FileAccess.file_exists(PATH), "Refuse to overwrite existing test fixture")
 	DirAccess.make_dir_recursive_absolute("res://builds")
 	var driver = preload("res://game/ai/oval_driver.gd").new()

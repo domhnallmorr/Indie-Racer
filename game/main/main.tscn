@@ -1,7 +1,7 @@
 [gd_scene format=3 uid="uid://b50ks86ix2r2f"]
 
 [ext_resource type="PackedScene" uid="uid://baul6f47f8teh" path="res://content/tracks/mile_oval/scenes/track.tscn" id="1"]
-[ext_resource type="Script" uid="uid://blx4gekgu8d32" path="res://game/camera/track_inspection.gd" id="2"]
+[ext_resource type="Script" uid="uid://nwww8obbl12f" path="res://game/camera/track_inspection.gd" id="2"]
 [ext_resource type="PackedScene" path="res://content/vehicles/open_wheel/scenes/player_vehicle.tscn" id="3"]
 [ext_resource type="Script" uid="uid://cgbq0s0hehtpd" path="res://game/camera/cockpit_view.gd" id="4"]
 [ext_resource type="Script" uid="uid://ey8vjctgjhyq" path="res://game/main/practice.gd" id="5"]

@@ -15,6 +15,10 @@ var ai_cars: Array[Node3D] = []
 var visual_batches = preload("res://game/render/static_visual_batches.gd").new()
 var lap_timing: Node
 var session_mode := "practice"
+var grid_ids: Array = []
+var player_grid_slot := 0
+var formation_leader: Node3D
+var max_fuel_capacity_gal := 35.0
 var green_previous_x := 0.0
 var green_banner_seconds := 0.0
 @onready var session = $Session
@@ -29,13 +33,10 @@ func _ready() -> void:
 	roster_seed = selection.get("seed",roster_seed)
 	ai_telemetry_enabled = selection.get("ai_telemetry",ai_telemetry_enabled)
 	session_mode = str(selection.get("session_mode","practice"))
+	max_fuel_capacity_gal = clampf(float(selection.get("max_fuel_capacity_gal",35.0)),2.0,35.0)
 	var rng := RandomNumberGenerator.new()
 	rng.randomize()
 	active_seed = rng.randi_range(0,2147483647) if roster_seed < 0 else roster_seed
-	var selector = preload("res://game/ui/roster_panel.gd").new()
-	selector.name = "RosterPanel"
-	selector.practice = self
-	$HUD.add_child(selector)
 	var fps := preload("res://game/ui/fps_counter.gd").new()
 	fps.name = "FPSCounter"
 	$HUD.add_child(fps)
@@ -46,15 +47,17 @@ func _ready() -> void:
 		set_process(false)
 		set_physics_process(false)
 		return
+	var selected_laps = selection.get("race_laps", track_data.race_laps)
+	if selected_laps is int or selected_laps is float:
+		track_data.race_laps = maxi(1, int(selected_laps))
 	if ai_enabled and not _load_roster():
 		player.driving_enabled = false
 		$HUD/Panel/Label.text = "Roster could not load: "+"; ".join(roster.errors)+"\nF12: choose roster"
 		set_process(false)
 		set_physics_process(false)
 		return
-	# Keep the player at the rear of race grids so the field can be observed
-	# cleanly from the cameras without holding up the AI at the start.
-	player.global_transform = $MileOval.global_transform * (track_data.grid_transform(roster.entries.size()) if session_mode == "race" else track_data.pit_box_transform())
+	_build_grid(selection)
+	player.global_transform = $MileOval.global_transform * (track_data.grid_transform(player_grid_slot) if session_mode == "race" else track_data.pit_box_transform())
 	player_state.assigned_pit_box_id = track_data.pit_boxes[0].id
 	player.track_data = track_data
 	player.track = $MileOval
@@ -65,15 +68,26 @@ func _ready() -> void:
 		$HUD/Panel/Label.text = "Player physics failed to load. Check physics CFG files and Output."
 		set_process(false)
 		return
+	player_state.configure_fuel(player.parameters.values,max_fuel_capacity_gal if session_mode == "race" else 0.0)
 	_update_pit_state()
 	_add_limiter_end_marker()
+	var pit_marker := preload("res://content/vehicles/open_wheel/pit_crew/pit_marker.gd").new()
+	pit_marker.name = "PlayerPitCrew"
+	pit_marker.configure(track_data.pit_box_transform(),player_state.assigned_pit_box_id)
+	$MileOval.add_child(pit_marker)
 	$InspectionCamera.focus_player()
 	if session_mode == "race":
 		session.start_race(track_data.race_laps)
+	elif session_mode == "qualifying":
+		session.start_qualifying()
 	else:
 		session.start_practice()
 	if ai_enabled:
 		_spawn_ai()
+	player_state.configure_stall(player,session,$MileOval.global_transform*track_data.pit_box_transform())
+	for i in range(ai_cars.size()):
+		ai_cars[i].player_state.configure_stall(ai_cars[i],session,$MileOval.global_transform*track_data.pit_box_transform(i+1))
+	$MileOval/PitStations.match_assigned_cars([player]+ai_cars,track_data.pit_boxes)
 	lap_timing = Node.new()
 	lap_timing.name = "LapTiming"
 	lap_timing.set_script(load("res://game/race/lap_timing.gd"))
@@ -82,24 +96,79 @@ func _ready() -> void:
 	if session_mode == "race":
 		lap_timing.reset_for_race()
 		session.green_flag.connect(_on_green_flag)
-		if not ai_cars.is_empty():
-			green_previous_x = $MileOval.to_local(ai_cars[0].global_position).x
-	var timing_panel := PanelContainer.new()
-	timing_panel.name = "TimingPanel"
-	timing_panel.set_script(load("res://game/ui/timing_panel.gd"))
-	timing_panel.timing = lap_timing
-	$HUD.add_child(timing_panel)
-	var debug := PanelContainer.new()
-	debug.name = "PhysicsDebug"
-	debug.set_script(load("res://game/ui/physics_debug.gd"))
-	debug.player = player
-	$HUD.add_child(debug)
+		for entry in lap_timing.entries:
+			entry.order = grid_ids.find(_car_id(entry.car))
+		formation_leader = player if player_grid_slot == 0 else ai_cars[0]
+		green_previous_x = $MileOval.to_local(formation_leader.global_position).x
+	session.finished.connect(_on_session_finished)
+	_add_race_ui()
 	_update_hud()
+
+func _car_id(car: Node3D) -> String:
+	return "player" if car == player else str(car.get_meta("roster_entry").id)
+
+func _build_grid(selection: Dictionary) -> void:
+	var fallback: Array = []
+	for entry in roster.race_entries():
+		fallback.append(entry.id)
+	fallback.append("player")
+	grid_ids = []
+	for id in selection.get("qualifying_grid", []):
+		if id in fallback and id not in grid_ids:
+			grid_ids.append(id)
+	for id in fallback:
+		if id not in grid_ids:
+			grid_ids.append(id)
+	player_grid_slot = grid_ids.find("player")
+
+func _on_session_finished() -> void:
+	if session_mode != "qualifying":
+		return
+	_return_to_weekend(true)
+
+func _return_to_weekend(save_qualifying: bool = false) -> void:
+	var selection: Dictionary = get_tree().root.get_meta("roster_selection", {}).duplicate(true)
+	selection.merge({"file": roster_file, "seed": active_seed, "race_laps": track_data.race_laps,
+		"max_fuel_capacity_gal": max_fuel_capacity_gal}, true)
+	if save_qualifying:
+		var results: Array = []
+		var order: Array = []
+		for entry in lap_timing.standings():
+			var id := _car_id(entry.car)
+			order.append(id)
+			results.append({"id": id, "name": entry.name, "best": entry.best})
+		selection["qualifying_grid"] = order
+		selection["qualifying_results"] = results
+	get_tree().root.set_meta("roster_selection", selection)
+	get_tree().root.set_meta("return_to_weekend", true)
+	get_tree().change_scene_to_file.call_deferred("res://game/main/menu.tscn")
+
+func _add_race_ui() -> void:
+	var black_box := preload("res://game/ui/black_box.gd").new()
+	black_box.name = "BlackBox"
+	black_box.practice = self
+	$HUD.add_child(black_box)
+	var race_ui := preload("res://game/ui/race_ui.tscn").instantiate()
+	race_ui.practice = self
+	race_ui.timing = lap_timing
+	var roster_panel = race_ui.get_node("Shell/Layout/Content/Pages/RosterPanel")
+	roster_panel.practice = self
+	roster_panel.shell = race_ui
+	var timing_panel = race_ui.get_node("Shell/Layout/Content/Pages/TimingPanel")
+	timing_panel.timing = lap_timing
+	timing_panel.shell = race_ui
+	var controls_panel = race_ui.get_node("Shell/Layout/Content/Pages/ControlsPanel")
+	controls_panel.practice = self
+	controls_panel.shell = race_ui
+	var physics_debug = race_ui.get_node("Shell/Layout/Content/Pages/PhysicsDebug")
+	physics_debug.player = player
+	physics_debug.shell = race_ui
+	$HUD.add_child(race_ui)
 
 func _physics_process(_delta: float) -> void:
 	_update_pit_state()
-	if session.status == session.Status.FORMATION and not ai_cars.is_empty():
-		var leader_position: Vector3 = $MileOval.to_local(ai_cars[0].global_position)
+	if session.status == session.Status.FORMATION and formation_leader != null:
+		var leader_position: Vector3 = $MileOval.to_local(formation_leader.global_position)
 		if green_previous_x < track_data.green_point.x and leader_position.x >= track_data.green_point.x and leader_position.z > 100.0:
 			session.show_green()
 		green_previous_x = leader_position.x
@@ -131,29 +200,19 @@ func _update_hud() -> void:
 		status_text = "SESSION COMPLETE" if session.status == session.Status.FINISHED else session.clock_text() + " remaining"
 	var location := "PIT LANE" if player_state.is_in_pit_lane else "OUTSIDE PIT LANE"
 	var limiter := "80 km/h LIMITER ON" if player_state.is_in_pit_speed_zone else "LIMITER OFF"
-	var session_name := "RACE" if session.session_type == session.SessionType.RACE else "PRACTICE"
-	$HUD/Panel/Label.text = "%s  |  %s\n%s  |  %s  |  %.0f km/h\nW: throttle   S: brake   A / D: steer\nR: reset to %s   1–4: exterior   5: cockpit\nCockpit: [ / ] FOV   PgUp / PgDn seat   Home reset\nQ / E: shift   M: auto/manual   V: reverse   N: neutral" % [session_name,status_text,location,limiter,absf(player_state.speed_mps) * 3.6,"grid" if session_mode == "race" else "pit box"]
-	for ai_car in ai_cars.slice(0,4):
-		var driver = ai_car.get_node("Driver")
-		$HUD/Panel/Label.text += "\n%s: %s  %.0f km/h" % [ai_car.get_meta("driver_name",str(ai_car.name)), ["IN BOX","PIT EXIT","RACING","FORMATION","PIT IN"][driver.mode], absf(ai_car.speed_mps)*3.6]
-	if not ai_cars.is_empty():
-		$HUD/Panel/Label.text += "\n%d opponents — 9: full timing list" % ai_cars.size()
-		$HUD/Panel/Label.text += "\n6 / 7: previous / next AI"
-		var followed: int = $InspectionCamera.followed_ai
-		if followed >= 0 and followed < ai_cars.size():
-			$HUD/Panel/Label.text += "\nFollowing: "+str(ai_cars[followed].get_meta("driver_name"))
-			var followed_driver = ai_cars[followed].get_node("Driver")
-			if followed_driver.practice_cycle:
-				if followed_driver.mode == followed_driver.Mode.WAITING:
-					var wait_seconds: int = int(ceil(maxf(0.0,followed_driver.release_delay-followed_driver.elapsed)))
-					$HUD/Panel/Label.text += "  |  OUT IN %d:%02d" % [wait_seconds/60,wait_seconds%60]
-				elif followed_driver.mode == followed_driver.Mode.RACING:
-					$HUD/Panel/Label.text += "  |  RUN %d / %d LAPS" % [followed_driver._timed_laps()-followed_driver.stint_start_laps,followed_driver.stint_laps]
-			if followed_driver.mode == 2:
-				$HUD/Panel/Label.text += "  |  "+followed_driver.racecraft.state.replace("_"," ")
-	$HUD/Panel/Label.text += "\n8: physics debug   9: timing   F10: wheel setup\nF12: session / roster"
-	$HUD/Panel/Label.text += "\nF11: telemetry " + ("RECORDING" if player.telemetry.file != null else "off")
-	$HUD/Panel/Label.text += "\n%s  Gear %s  %.0f RPM" % ["AUTO" if player.sim.automatic else "MANUAL",player.gear_text,player.engine_rpm]
+	var session_name := session_mode.to_upper()
+	$HUD/Panel/Label.text = "%s  •  %s\n%s  •  %s" % [session_name,status_text,location,limiter]
+	if not player.get_node("Cockpit").active:
+		$HUD/Panel/Label.text += "\n%.0f km/h  •  GEAR %s  •  %.0f RPM" % [absf(player_state.speed_mps)*3.6,player.gear_text,player.engine_rpm]
+	var followed: int = $InspectionCamera.followed_ai
+	if $InspectionCamera.tv_mode:
+		var subject: Node3D = $InspectionCamera.followed_subject()
+		var driver_name := "Player" if subject == player else str(subject.get_meta("driver_name",subject.name))
+		$HUD/Panel/Label.text += "\nTV CAMERA  •  P%d  •  %s" % [$InspectionCamera.followed_position(),driver_name]
+	elif followed >= 0 and followed < ai_cars.size():
+		var followed_driver = ai_cars[followed].get_node("Driver")
+		$HUD/Panel/Label.text += "\nFOLLOWING  %s  •  %s" % [ai_cars[followed].get_meta("driver_name",str(ai_cars[followed].name)),"OUT — ENGINE" if followed_driver.race_plan.retired else ["IN BOX","PIT EXIT","RACING","FORMATION","PIT IN"][followed_driver.mode]]
+	$HUD/Panel/Label.text += "\nF12 MENU  •  9 TIMING  •  F1–F3 INFO"
 
 func _load_roster() -> bool:
 	if not roster.load_roster(roster_file):
@@ -199,9 +258,13 @@ func _spawn_ai() -> void:
 	var use_icr2: bool = roster.data.get("ai_method", "bicycle") == "ICR2"
 	data["profile_directory"] = track_session_file.get_base_dir()+"/ai/"
 	var spawn_entries: Array[Dictionary] = roster.race_entries() if session_mode == "race" else roster.entries
+	if session_mode == "race":
+		spawn_entries = spawn_entries.duplicate()
+		spawn_entries.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return grid_ids.find(a.id) < grid_ids.find(b.id))
 	for i in range(spawn_entries.size()):
 		var entry: Dictionary = spawn_entries[i]
 		var roster_index: int = roster.entries.find(entry)
+		var grid_slot: int = grid_ids.find(entry.id)
 		var vehicle = load(entry.spec.scene).instantiate()
 		vehicle.set_script(load("res://game/vehicle/icr2_car.gd" if use_icr2 else "res://game/vehicle/player_bicycle.gd"))
 		vehicle.human_controlled = false
@@ -214,10 +277,11 @@ func _spawn_ai() -> void:
 		state.set_script(load("res://game/vehicle/player_state.gd"))
 		vehicle.add_child(state)
 		add_child(vehicle)
-		vehicle.global_transform = $MileOval.global_transform * (track_data.grid_transform(i) if session_mode == "race" else track_data.pit_box_transform(i+1))
+		vehicle.global_transform = $MileOval.global_transform * (track_data.grid_transform(grid_slot) if session_mode == "race" else track_data.pit_box_transform(i+1))
 		vehicle.track_data = track_data
 		vehicle.track = $MileOval
 		vehicle.player_state = state
+		state.configure_fuel(vehicle.parameters.values,max_fuel_capacity_gal if session_mode == "race" else 0.0)
 		state.assigned_pit_box_id = track_data.pit_boxes[i+1].id
 		vehicle.update_zone_state()
 		for mesh in vehicle.get_node("Visual").find_children("*","MeshInstance3D",true,false):
@@ -235,8 +299,9 @@ func _spawn_ai() -> void:
 		driver.configure_performance(sampled,ai_profiles[entry.spec.ai_class])
 		driver.configure(vehicle,data,4.0+6.0*(roster.entries.size()-1-roster_index),ai_telemetry_enabled)
 		if session_mode == "race":
-			var lane: float = -track_data.grid_lane_spacing_m*.5 if i%2 == 0 else track_data.grid_lane_spacing_m*.5
-			driver.start_formation(lane,track_data.pace_speed_kph,i/2)
+			driver.configure_race_pits(session,$MileOval.global_transform*track_data.pit_box_transform(i+1))
+			var lane: float = -track_data.grid_lane_spacing_m*.5 if grid_slot%2 == 0 else track_data.grid_lane_spacing_m*.5
+			driver.start_formation(lane,track_data.pace_speed_kph,grid_slot/2)
 		else:
 			driver.configure_practice(session,int(sampled.variation_seed))
 		vehicle.set_meta("sampled_ratings",sampled)
@@ -263,8 +328,10 @@ func _on_green_flag() -> void:
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_R and player.driving_enabled:
-		player.global_transform = $MileOval.global_transform * (track_data.grid_transform(roster.entries.size()) if session_mode == "race" and session.status == session.Status.FORMATION else track_data.pit_box_transform())
+		player.global_transform = $MileOval.global_transform * (track_data.grid_transform(player_grid_slot) if session_mode == "race" and session.status == session.Status.FORMATION else track_data.pit_box_transform())
 		player.reset_dynamics()
+		if session.session_type != session.SessionType.RACE:
+			player_state.park_in_stall()
 		player_state.speed_mps = 0
 		player.get_node("Visual").basis = Basis.IDENTITY
 		player.get_node("Cockpit").basis = Basis.IDENTITY

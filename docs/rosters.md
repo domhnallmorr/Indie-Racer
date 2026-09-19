@@ -7,13 +7,13 @@ The historical calibration figures below predate this tune.
 The field now uses the [two-wide racecraft prototype](racecraft.md). Faster cars
 can attempt passes; the original field-calibration notes below predate overtaking.
 
-Press **F12** in practice, choose a roster, and restart practice with it. The seed is shown in the panel: -1 rolls a new session; entering the same nonnegative seed reproduces the driver ratings. Selection survives scene restarts during this game run. Inspector exports `roster_file` and `roster_seed` set launch defaults.
+Press **F12** in practice to open the Session screen, choose a roster, and restart practice with it. The seed is shown there: -1 rolls a new session; entering the same nonnegative seed reproduces the driver ratings. Selection survives scene restarts during this game run. Inspector exports `roster_file` and `roster_seed` set launch defaults.
 
 Two examples are included: **Reference field** preserves the calibrated Blue/Yellow performance with named fictional drivers; **Club 1996 — 15-car test field** has five fast, five midfield and five slower fictional drivers. These are AI opponent rosters, not championship schedules. The player currently retains the existing selected player car.
 
 The 15-car field is the launch default (16 cars including you). Cornering rating ranges run from 94–100 at the front to 40–46 at the back, with separate braking/throttle ranges and seeded variation. All use the same car specification so driver differences can be isolated. The slower group occupies the forward pit boxes and departs first, allowing the faster group to catch it. Departures remain six seconds apart, from 4 to 88 seconds, with traffic checks able to delay them. Overtaking is still pending, so faster cars can form queues behind slower cars.
 
-The selector scrolls through the full roster. The main HUD shows four drivers plus the followed driver's name; press **9** for the full timing table and **6/7** to cycle through every AI. The two-car Reference field remains selectable for isolated comparisons.
+The selector scrolls through the full roster. The compact HUD only shows the followed driver's name and state; press **9** for the full Timing screen and **6/7** to cycle through every AI. The two-car Reference field remains selectable for isolated comparisons.
 
 The full-field test exposed a pit-exit queue deadlock. AI still on the pit-exit route are now handled by following rather than treated as approaching racing traffic by the merge check. Cars already racing retain priority; this is not an overtaking planner.
 

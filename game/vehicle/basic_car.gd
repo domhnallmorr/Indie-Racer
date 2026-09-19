@@ -76,14 +76,55 @@ func drive_step(delta: float, throttle: float, brake: float, steering: float) ->
 	update_zone_state()
 	_apply_limit()
 	player_state.speed_mps = speed_mps
-	# Match the visible chassis to the banking, leaving the collision body upright.
-	if is_on_floor():
-		var normal := global_basis.inverse() * get_floor_normal()
-		var right := normal.cross(Vector3.BACK).normalized()
-		var slope_basis := Basis(right, normal, right.cross(normal).normalized()).orthonormalized()
-		$Visual.basis = $Visual.basis.slerp(slope_basis, minf(1, delta * 10))
-		if has_node("Cockpit"):
-			$Cockpit.basis = $Visual.basis
+	_update_visual_grounding(delta)
+
+func _update_visual_grounding(delta: float) -> void:
+	# The upright collision box rests on its uphill edge. Tilting the mesh alone
+	# therefore leaves its tyres ~15 cm above a 9-degree bank. Fit the visual
+	# contact plane to four road samples, without moving the physics body.
+	if not is_on_floor():
+		return
+	var contacts: PackedVector3Array = $Visual.get_meta("tyre_contacts",PackedVector3Array([
+		Vector3(-.825,0,-1.5),Vector3(-.825,0,1.5),
+		Vector3(.825,0,-1.5),Vector3(.825,0,1.5)]))
+	var points := PackedVector3Array()
+	var space := get_world_3d().direct_space_state
+	for contact in contacts:
+		var at := to_global(contact)
+		var query := PhysicsRayQueryParameters3D.create(at+Vector3.UP*.6,at-Vector3.UP*1.2)
+		query.exclude = [get_rid()]
+		var hit := space.intersect_ray(query)
+		# A neighbour's chassis must never become the visual ground plane.
+		while not hit.is_empty() and hit.collider is CharacterBody3D:
+			var excluded := query.exclude
+			excluded.append(hit.rid)
+			query.exclude = excluded
+			hit = space.intersect_ray(query)
+		if hit.is_empty() or hit.normal.dot(Vector3.UP) < .65:
+			return # Preserve the last pose if a tyre has no supporting road.
+		points.append(to_local(hit.position))
+	var across := (points[2]+points[3]-points[0]-points[1])*.5
+	var rearward := (points[1]+points[3]-points[0]-points[2])*.5
+	var normal := rearward.cross(across).normalized()
+	if normal.y < .65:
+		return
+	var right := normal.cross(Vector3.BACK).normalized()
+	var target := Basis(right,normal,right.cross(normal).normalized()).orthonormalized()
+	$Visual.basis = $Visual.basis.slerp(target,1.0-exp(-40.0*delta)).orthonormalized()
+	# Highest required support avoids sinking a tyre while the tilt catches up.
+	var lift := -INF
+	for i in range(contacts.size()):
+		lift = maxf(lift,points[i].y-($Visual.basis*contacts[i]).y)
+	$Visual.position.y = clampf(lift+.003,-.65,.35)
+	if has_node("Cockpit"):
+		var offset: Vector3 = $Visual.get_meta("cockpit_offset",Vector3.ZERO)
+		$Cockpit.transform = $Visual.transform*Transform3D(Basis.IDENTITY,offset)
+
+func _reset_visual_grounding() -> void:
+	$Visual.basis = Basis.IDENTITY
+	$Visual.position.y = 0.0
+	if has_node("Cockpit"):
+		$Cockpit.transform = Transform3D(Basis.IDENTITY,$Visual.get_meta("cockpit_offset",Vector3.ZERO))
 
 func _receive_contact_velocity(new_velocity: Vector3) -> void:
 	velocity = new_velocity

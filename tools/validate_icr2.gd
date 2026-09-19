@@ -34,6 +34,10 @@ func validate() -> void:
 		assert(car.get_script().resource_path.ends_with("icr2_car.gd"))
 		driver.diagnostic = FileAccess.open("res://builds/icr2_"+str(car.name)+".csv",FileAccess.WRITE)
 		driver.diagnostic.store_line("time_s,mode,index,x_m,y_m,z_m,speed_kph,profile_kph,target_kph,line_error_m,reason,racecraft,lane,target_lane,opponent,passes")
+	# Practice now randomises initial releases over several minutes. This focused
+	# two-car regression needs deterministic departures inside its three-minute run.
+	for i in range(main.ai_cars.size()):
+		main.ai_cars[i].get_node("Driver").release_delay = i*10.0
 	for tick in range(10800):
 		await physics_frame
 		for i in range(2):
@@ -70,7 +74,7 @@ func validate() -> void:
 		results[-1].merge_speed_kph = join_speeds[i]
 		results[-1].pit_backstraight_mean_kph = backstraight_mean
 		results[-1].max_pit_line_error_m = pit_line_errors[i]
-		var pace_target: float = main.ai_cars[i].get_meta("roster_entry").icr2_lap_s
+		var pace_target: float = main.ai_cars[i].get_node("Driver").target_lap_s()
 		if entry.laps < 4 or absf(entry.best-pace_target) > .2 or maximum_errors[i] > 2.0 or road_offsets[i] > 9 or join_times[i] == 0 or limiter_ticks[i] == 0:
 			errors.append("Circulation failed: "+entry.name)
 	if main.lap_timing.entries[2].best >= main.lap_timing.entries[1].best:

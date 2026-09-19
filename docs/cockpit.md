@@ -23,9 +23,12 @@ viewport, displayed on the 3D console. Speed is labelled km/h, fuel L, water °C
 Speed, gear and RPM are now live from the player bicycle model. Other engine
 readings remain placeholders; see `player_physics.md` for controls and tuning.
 
-Mirrors are horizontally flipped rear camera textures at 384×160 each, sharing
-the track world. They update only in cockpit view and omit this displayed car.
-Their poses follow the displayed car each frame, including pit-box spawning. Future AI cars
+The cockpit's two physical mirror housings and displays are hidden. A single
+wide virtual mirror sits at the top centre of the screen in a black frame.
+It uses a horizontally flipped 960×180 rear camera texture with a 100° horizontal
+field of view, sharing the track world. It appears and updates only in cockpit
+view and omits the player's car. Its pose follows the car each frame, including
+pit-box spawning, independently of the driver's seat/FOV settings. Future AI cars
 must remain on a mirror-visible layer. This is rear camera rendering, not ray-traced
 reflection. Lower mirror resolution/update frequency if full-field performance needs it.
 

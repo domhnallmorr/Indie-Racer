@@ -56,6 +56,8 @@ func _process(delta: float) -> void:
 	volume_db = engine_volume_db + linear_to_db(maxf(0.0001, lerpf(0.35, 0.8, audible_load)*gain))
 
 func _engine_state(delta: float) -> Vector3:
+	if vehicle.player_state != null and not vehicle.player_state.engine_running:
+		return Vector3.ZERO
 	if not "physics_ready" in vehicle or not vehicle.physics_ready:
 		return Vector3(2500, 0, 0)
 	# AI is driven by its Driver node, not the player's driving_enabled flag.

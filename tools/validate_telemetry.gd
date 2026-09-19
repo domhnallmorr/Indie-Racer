@@ -13,7 +13,7 @@ func run() -> void:
 	player.telemetry.stop()
 	var file := FileAccess.open(player.telemetry.path, FileAccess.READ)
 	var header := file.get_csv_line()
-	assert(header.size() == 42)
+	assert(header.size() == 45)
 	var rows := 0
 	while not file.eof_reached():
 		var row := file.get_csv_line()
@@ -24,5 +24,5 @@ func run() -> void:
 		rows += 1
 	assert(rows > 0)
 	assert(FileAccess.file_exists(player.telemetry.path.get_basename() + ".cfg"))
-	print("TELEMETRY PASSED: ", rows, " rows, 42 columns, metadata and clean stop")
+	print("TELEMETRY PASSED: ", rows, " rows, 45 columns, metadata and clean stop")
 	quit()

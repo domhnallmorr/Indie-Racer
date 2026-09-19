@@ -16,6 +16,11 @@ func start_practice() -> void:
 	status = Status.RUNNING
 	advance(0.0)
 
+func start_qualifying() -> void:
+	session_type = SessionType.QUALIFYING
+	remaining_seconds = 600.0
+	status = Status.RUNNING
+
 func start_race(laps: int = 10) -> void:
 	session_type = SessionType.RACE
 	race_laps = maxi(1,laps)
@@ -37,7 +42,7 @@ func _process(delta: float) -> void:
 	advance(delta)
 
 func advance(delta: float) -> void:
-	if status != Status.RUNNING or session_type != SessionType.PRACTICE:
+	if status != Status.RUNNING or session_type == SessionType.RACE:
 		return
 	remaining_seconds = maxf(0.0, remaining_seconds - maxf(0.0, delta))
 	if remaining_seconds == 0.0:

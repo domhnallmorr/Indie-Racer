@@ -11,9 +11,17 @@ F5 starts practice in the pit stall, in cockpit view.
 - Releasing W/S coasts down gradually. Steering works while moving, including reverse.
 - R: reset the car to its assigned pit box without restarting the session clock.
 - 4: following exterior inspection view; 5: cockpit. Other camera controls remain.
+- T: TV trackside mode. Numpad + / - follows the next / previous car in current
+  physical track order, including the player, and wraps at either end of the field.
 
 From the stall, steer gently right into the adjacent pit travel lane, then straighten.
 The limiter caps speed at **80 km/h** in the pit-speed zone, including the pit boxes.
+A yellow transverse line, painted 80 and PIT LIMIT sign mark the existing entry
+boundary at track-local **X = -130 m**, near the end of the pit-lane taper.
+The separator wall extends back to that line, with crash barrels protecting its
+new nose. The limiter zone stays on the pit side of the wall.
+The first pit box now has a tapered asphalt approach extending back to X = -125 m.
+Its collision surface provides tarmac grip, and the pit-area polygon includes it.
 A green line and END 80 sign mark the exit at track-local **X = 195 m**, about 11 m
 before Turn 1 begins. Past the line, accelerate freely along the T1/T2 exit lane and
 merge on the backstraight. The full exit route is still classified as pit lane, but

@@ -40,13 +40,11 @@ func reference_step(delta: float, target_speed: float, curvature: float) -> void
 	if player_state.is_in_pit_speed_zone:
 		speed_mps = minf(speed_mps,track_data.speed_limit_kph/3.6)
 	player_state.speed_mps = speed_mps
-	if is_on_floor():
-		var local_normal := global_basis.inverse()*get_floor_normal()
-		var right := local_normal.cross(Vector3.BACK).normalized()
-		var tilt := Basis(right,local_normal,right.cross(local_normal).normalized()).orthonormalized()
-		$Visual.basis = $Visual.basis.slerp(tilt,minf(1,delta*10))
+	player_state.consume_distance(Vector2(travelled.x,travelled.z).length()*delta)
+	_update_visual_grounding(delta)
 
 func reset_dynamics() -> void:
+	_reset_visual_grounding()
 	speed_mps = 0
 	velocity = Vector3.ZERO
 	contact_drift = Vector3.ZERO

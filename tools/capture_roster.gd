@@ -6,7 +6,7 @@ func capture() -> void:
 	main.roster_file = "res://content/rosters/club_1996/manifest.json"
 	main.roster_seed = 1234
 	root.add_child(main)
-	main.get_node("HUD/RosterPanel").show()
+	main.get_node("HUD/RaceUI").open_page("session")
 	for i in range(3):
 		await process_frame
 	await RenderingServer.frame_post_draw

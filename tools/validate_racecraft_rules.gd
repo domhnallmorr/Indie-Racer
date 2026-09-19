@@ -113,7 +113,7 @@ func validate() -> void:
 	craft.nearby.assign([{"car":slow,"gap":0.0,"lateral":0.0}])
 	check(not craft.lane_clear(driver,0),"Return to ideal line must not cross an overlapping car")
 	craft.own.y = 0
-	craft.nearby.assign([{"car":slow,"gap":10.0,"lateral":4.0}])
+	craft.nearby.assign([{"car":slow,"gap":10.0,"lateral":0.0}])
 	slow.speed_mps = 60
 	check(craft.traffic_speed(driver,70) < 70 and driver.traffic_reason.begins_with("collision_guard_"),"An imminent same-lane collision must constrain pace")
 	craft.begin_green_launch(.3,NAN,0,70)

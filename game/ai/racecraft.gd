@@ -66,6 +66,11 @@ var green_launch_lane_hold_remaining_s := 0.0
 var green_launch_lane := 0.0
 var launch_lateral_m := 0.0
 var launch_weight := 0.0
+var stalemate_car: Node3D
+var stalemate_seconds := 0.0
+var yielding_car: Node3D
+var yield_remaining_s := 0.0
+var yield_cooldown_s := 0.0
 var green_launch_acceleration_mps2 := 5.0
 var green_launch_acceleration_window_s := 5.0
 var green_launch_row_delay_s := 0.1
@@ -305,20 +310,14 @@ func update(driver, delta: float) -> void:
 			continue
 		var separation := gap(driver,p.x)
 		nearby.append({"car":vehicle,"gap":separation,"lateral":p.y})
+	_update_stalemate(driver,delta)
 	if launch_weight > 0.0:
-		# A fixed track-relative lane does not sweep outward with RACE at corner
-		# exit. Keep it until the timer AND the neighbouring row are clear.
-		var beside := false
-		for other in nearby:
-			if absf(other.gap) < nearby_room_gap_m and absf(other.lateral-own.y) > room_status_lateral_m:
-				beside = true
-		if green_launch_lane_hold_remaining_s <= 0.0 and not beside and lane_clear(driver,0.0):
-			launch_weight = move_toward(launch_weight,0.0,maxf(8.0,driver.car.speed_mps)*delta/lane_blend_distance_m)
-		state = "alongside" if beside else "holding_lane"
-		if launch_weight <= 0.0:
-			lane = 0.0
-			target_lane = 0.0
-		return
+		if green_launch_lane_hold_remaining_s > 0.0:
+			state = "holding_lane"
+			return
+		# Release the launch constraint on time, not on an empty neighbouring
+		# lane. Normal planning and physical side-room protection take over.
+		launch_weight = move_toward(launch_weight,0.0,maxf(8.0,driver.car.speed_mps)*delta/lane_blend_distance_m)
 	var overlapping := false
 	for other in nearby:
 		if absf(other.gap) < 18:
@@ -416,6 +415,37 @@ func update(driver, delta: float) -> void:
 	if opponent == null and state == "clear" and absf(lane) > .01:
 		state = "returning"
 
+func _update_stalemate(driver, delta: float) -> void:
+	yield_cooldown_s = maxf(0.0,yield_cooldown_s-delta)
+	yield_remaining_s = maxf(0.0,yield_remaining_s-delta)
+	if is_instance_valid(yielding_car) and yield_remaining_s > 0.0:
+		if gap(driver,coordinates(driver,yielding_car).x) < 24.0:
+			return
+	yielding_car = null
+	if yield_cooldown_s > 0.0 or green_launch_acceleration_remaining_s > 0.0:
+		stalemate_car = null
+		stalemate_seconds = 0.0
+		return
+	var candidate: Node3D
+	for other in nearby:
+		# Only the trailing member yields; names break a dead-even tie so both
+		# cars cannot progressively slow one another. Hold position laterally.
+		var behind: bool = other.gap > .25 or (absf(other.gap) <= .25 and str(driver.car.name) > str(other.car.name))
+		if behind and absf(other.gap) < 8.0 and absf(other.lateral-own.y) > room_status_lateral_m and absf(other.car.speed_mps-driver.car.speed_mps) < .5:
+			candidate = other.car
+			break
+	if candidate != stalemate_car:
+		stalemate_seconds = 0.0
+		stalemate_car = candidate
+	if candidate == null:
+		return
+	stalemate_seconds += delta
+	if stalemate_seconds >= 6.0:
+		yielding_car = candidate
+		yield_remaining_s = 4.0
+		yield_cooldown_s = 16.0
+		stalemate_seconds = 0.0
+
 func lane_clear(driver, candidate: float, ignored: Node3D = null) -> bool:
 	var destination := lane_lateral(driver,candidate,0)
 	for other in nearby:
@@ -454,10 +484,11 @@ func path_point(driver, distance: float, choice: float) -> Vector3:
 func ahead(driver, distance: float) -> Vector3:
 	if not enabled or driver.mode != 2:
 		return driver._ahead(distance)
-	if launch_weight > 0.0:
-		return driver._ahead(distance).lerp(track_lane_point(driver,distance,launch_lateral_m),launch_weight)
 	var preview := lane if lane_change_blocked else move_toward(lane,target_lane,maxf(0,distance)/lane_blend_distance_m)
-	return _leave_side_room(driver,distance,path_point(driver,distance,preview))
+	var point := path_point(driver,distance,preview)
+	if launch_weight > 0.0:
+		point = point.lerp(track_lane_point(driver,distance,launch_lateral_m),launch_weight)
+	return _leave_side_room(driver,distance,point)
 
 func _leave_side_room(driver, distance: float, point: Vector3) -> Vector3:
 	# RACE and a passing groove can converge as the ideal line crosses the
@@ -537,13 +568,20 @@ func traffic_speed(driver, request: float) -> float:
 		request = minf(request,green_launch_speed_cap_mps)
 	if green_launch_guard_remaining_s > 0:
 		return request
+	if is_instance_valid(yielding_car) and yield_remaining_s > 0.0:
+		request = minf(request,maxf(0.0,yielding_car.speed_mps-1.5))
+		driver.traffic_reason = "stalemate_yield_"+str(yielding_car.name)
 	for other in nearby:
 		if other.gap <= 0 or other.gap > maxf(15,driver.car.speed_mps*3.5):
 			continue
-		var intended := lane_lateral(driver,target_lane,other.gap)
-		if launch_weight > 0.0:
-			intended = lerpf(lane_lateral(driver,0.0,other.gap),launch_lateral_m,launch_weight)
-		var separated: bool = absf(other.lateral-own.y) > 4.2 and absf(other.lateral-intended) > 4.2
+		# Judge the actual protected path, including a blocked lane change and
+		# side-room correction, rather than an unreachable tactical target.
+		var at: float = fposmod(driver.race_distances[driver.index]+other.gap,driver.race_length_m)
+		var low: Vector3 = driver._sample_path(inner,driver.race_distances,at)
+		var high: Vector3 = driver._sample_path(outer,driver.race_distances,at)
+		var across := high-low
+		var intended := (ahead(driver,other.gap)-low).dot(across)/maxf(across.length_squared(),.001)*16.0-8.0
+		var separated: bool = absf(other.lateral-own.y) >= 3.1 and absf(other.lateral-intended) >= 3.1
 		if separated:
 			continue
 		# Retain the short-gap response for close traffic, then constrain it

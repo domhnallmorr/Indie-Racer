@@ -14,6 +14,11 @@
 [ext_resource type="Script" path="res://content/tracks/mile_oval/building/pit_building.gd" id="12_building"]
 [ext_resource type="Script" path="res://content/tracks/mile_oval/transporters/transporters.gd" id="13_trucks"]
 [ext_resource type="Script" path="res://content/tracks/mile_oval/flag/flag_stand.gd" id="14_starter"]
+[ext_resource type="Script" path="res://content/tracks/mile_oval/wall_ads/wall_ads.gd" id="15_wall_ads"]
+[ext_resource type="Script" path="res://content/tracks/mile_oval/pit_entry/crash_barrels.gd" id="16_barrels"]
+
+[ext_resource type="Script" path="res://content/tracks/mile_oval/pit_station/pit_stations.gd" id="17_station"]
+[ext_resource type="Script" path="res://content/tracks/mile_oval/pit_entry/pit_access.gd" id="18_access"]
 
 [node name="MileOval" type="Node3D" unique_id=1582581415]
 metadata/units = "metres"
@@ -62,3 +67,15 @@ script = ExtResource("13_trucks")
 
 [node name="StarterFlagStand" type="Node3D" parent="."]
 script = ExtResource("14_starter")
+
+[node name="WallAdvertisements" type="Node3D" parent="."]
+script = ExtResource("15_wall_ads")
+
+[node name="PitEntryProtection" type="Node3D" parent="."]
+script = ExtResource("16_barrels")
+
+[node name="PitStations" type="Node3D" parent="."]
+script = ExtResource("17_station")
+
+[node name="PitAccess" type="Node3D" parent="."]
+script = ExtResource("18_access")

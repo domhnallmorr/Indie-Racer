@@ -27,7 +27,7 @@ func validate() -> void:
 			var clean: float = d._scaled_reference_speed(reference)
 			peak_clean = maxf(peak_clean,clean*3.6)
 			peak_passing = maxf(peak_passing,clean*d.racecraft.speed_factor()*3.6)
-		check(is_equal_approx(d._scaled_reference_speed(d.reference_peak_speed*.75),d.reference_peak_speed*.75*d.pace_scale),"Corner pace ratings remain intact")
+			check(is_equal_approx(d._scaled_reference_speed(d.reference_peak_speed*.75),d.reference_peak_speed*.75*d.effective_pace_scale()),"Corner pace ratings remain intact")
 	check(peak_clean <= 315 and peak_passing <= 322,"Straight-line speeds must stay close to recorded player reference")
 	check(driver._scaled_reference_speed(driver.reference_peak_speed) > slow.get_node("Driver")._scaled_reference_speed(driver.reference_peak_speed),"Retain individual straight-line differences")
 	print("SPEED peak_clean_kph=",peak_clean," peak_passing_kph=",peak_passing)

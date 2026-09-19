@@ -23,6 +23,18 @@ func text_at(text: String, pos: Vector2, size: int, color := Color("202720")) ->
 func _draw() -> void:
 	draw_rect(Rect2(0,0,640,320), Color("a8b3a0"))
 	draw_rect(Rect2(8,8,624,304), Color("28332c"), false, 4)
+	if is_instance_valid(player) and player.player_state != null and player.player_state.pit_stall_state == player.player_state.StallState.SERVICING:
+		text_at("REFUELLING",Vector2(36,90),42)
+		text_at("%.1f GAL" % player.player_state.fuel_gal,Vector2(36,158),42)
+		text_at("READY IN %.1f s" % player.player_state.service_remaining,Vector2(36,226),32)
+		return
+	if is_instance_valid(player) and player.player_state != null and player.player_state.pit_stall_state == player.player_state.StallState.STOPPED:
+		var rows := ["Tyres", "Fuel: %02d GAL  < >" % int(player.player_state.selected_fuel_gal), "Leave Pits"]
+		for i in range(rows.size()):
+			text_at((">" if player.player_state.pit_menu_selection == i else " ")+rows[i],Vector2(36,90+i*68),42)
+		if player.player_state.session.status == player.player_state.session.Status.FINISHED:
+			text_at("SESSION COMPLETE",Vector2(36,290),22)
+		return
 	text_at("OVAL 95     /     PRACTICE", Vector2(24,36), 22)
 	text_at("RPM x 1000", Vector2(24,64), 18)
 	for i in range(14):
@@ -38,5 +50,8 @@ func _draw() -> void:
 	text_at("LAP",Vector2(390,155),22)
 	text_at("--",Vector2(390,211),48)
 	text_at("TIME  --:--.---",Vector2(24,272),25)
-	text_at("FUEL  -- L",Vector2(355,256),23)
+	var fuel_text := "FUEL  -- L"
+	if is_instance_valid(player) and player.player_state != null:
+		fuel_text = "FUEL  %05.1f L" % player.player_state.fuel_litres()
+	text_at(fuel_text,Vector2(355,256),23)
 	text_at("WATER  -- °C",Vector2(355,288),23)

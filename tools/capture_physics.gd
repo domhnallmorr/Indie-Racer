@@ -4,7 +4,7 @@ func _initialize() -> void:
 func capture() -> void:
 	var main = load("res://game/main/main.tscn").instantiate()
 	root.add_child(main)
-	main.get_node("HUD/PhysicsDebug").show()
+	main.get_node("HUD/RaceUI").open_page("diagnostics")
 	for unused in range(60):
 		await process_frame
 	await RenderingServer.frame_post_draw

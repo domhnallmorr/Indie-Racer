@@ -15,7 +15,7 @@ func measure() -> void:
 	main.player.reset_dynamics()
 	var counts: Array = []
 	for car in main.ai_cars:
-		counts.append({"collision_guard":0,"racing":0,"states":{}})
+		counts.append({"collision_guard":0,"racing":0,"states":{},"contacts":0,"yield_ticks":0})
 	# Let the normal formation lap establish the racing entry and timing gates.
 	for tick in range(7200):
 		await physics_frame
@@ -35,6 +35,11 @@ func measure() -> void:
 		for i in range(main.ai_cars.size()):
 			var driver = main.ai_cars[i].get_node("Driver")
 			counts[i].racing += 1
+			if driver.racecraft.yielding_car != null:
+				counts[i].yield_ticks += 1
+			for collision in range(main.ai_cars[i].get_slide_collision_count()):
+				if main.ai_cars[i].get_slide_collision(collision).get_collider() in main.ai_cars:
+					counts[i].contacts += 1
 			if driver.traffic_reason.begins_with("collision_guard"):
 				counts[i].collision_guard += 1
 			var state: String = driver.racecraft.state
@@ -46,7 +51,7 @@ func measure() -> void:
 		var car = main.ai_cars[i]
 		var entry: Dictionary = main.lap_timing.entries[i+1]
 		var craft = car.get_node("Driver").racecraft
-		results.append({"name":entry.name,"target":car.get_meta("roster_entry").icr2_lap_s,"best":entry.best,"last":entry.last,"laps":entry.laps,"collision_guard_fraction":float(counts[i].collision_guard)/counts[i].racing,"states":counts[i].states,"attempts":craft.attempts,"passes":craft.passes,"aborts":craft.aborted})
+		results.append({"name":entry.name,"target":car.get_meta("roster_entry").icr2_lap_s,"best":entry.best,"last":entry.last,"laps":entry.laps,"collision_guard_fraction":float(counts[i].collision_guard)/counts[i].racing,"states":counts[i].states,"attempts":craft.attempts,"passes":craft.passes,"aborts":craft.aborted,"contact_frames":counts[i].contacts,"yield_ticks":counts[i].yield_ticks,"launch_weight":craft.launch_weight})
 	var output := "res://builds/diagnostic_clean_air.json" if ghost else "res://builds/diagnostic_race_traffic.json"
 	var file := FileAccess.open(output,FileAccess.WRITE)
 	file.store_string(JSON.stringify(results,"  "))

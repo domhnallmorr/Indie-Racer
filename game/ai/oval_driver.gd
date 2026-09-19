@@ -3,6 +3,15 @@ extends Node
 enum Mode { WAITING, PIT_EXIT, RACING, FORMATION, PIT_ENTRY }
 var mode: Mode = Mode.WAITING
 var practice_cycle := false
+var race_pit_cycle := false
+var race_plan = preload("res://game/race/ai_race_plan.gd").new()
+var service_started := -1.0
+var service_start_fuel := 0.0
+var service_duration_seconds := 10.0
+var completed_fuel_stops := 0
+var pit_fuel_trigger_gal := 35.0/60.0
+const REFUEL_MIN_SECONDS := 10.0
+const REFUEL_MAX_SECONDS := 13.0
 var practice_session: Node
 var pit_box_pose := Transform3D.IDENTITY
 var cycle_rng := RandomNumberGenerator.new()
@@ -159,6 +168,11 @@ func _physics_process(delta: float) -> void:
 	if car == null:
 		return
 	elapsed += delta
+	if race_pit_cycle and race_plan.update(self,delta):
+		return
+	if _update_race_service():
+		car.drive_step(delta,0,1,0)
+		return
 	_update_car_collisions()
 	if not ratings.is_empty():
 		if laps != form_lap:
@@ -168,8 +182,10 @@ func _physics_process(delta: float) -> void:
 		cornering_utilisation = cornering_base*form
 		braking_utilisation = braking_base*form
 	if mode == Mode.WAITING:
-		if (not practice_cycle or practice_session.status == practice_session.Status.RUNNING) and elapsed >= release_delay and _departure_clear():
+		if (not (practice_cycle or race_pit_cycle) or practice_session.status == practice_session.Status.RUNNING) and elapsed >= release_delay and _departure_clear():
 			mode = Mode.PIT_EXIT
+			if practice_cycle or race_pit_cycle:
+				car.player_state.request_departure()
 		else:
 			car.drive_step(delta,0,1,0)
 			return
@@ -455,7 +471,7 @@ func _merge_clear() -> bool:
 	merge_blocker = ""
 	var position: Vector3 = car.track.to_local(car.global_position)
 	for other in rivals:
-		if other == car:
+		if other == car or other.get_meta("retired",false):
 			continue
 		# Cars queued on this same pit-exit route are handled by following.
 		# Counting them as approaching race traffic can make neighbours wait
@@ -496,8 +512,34 @@ func configure_practice(session_node: Node, seed_value: int) -> void:
 	pit_box_pose = car.global_transform
 	cycle_rng.seed = seed_value
 	stint_laps = cycle_rng.randi_range(6,20)
-	# Spread the first departures across two minutes.
-	release_delay = cycle_rng.randf_range(4.0,120.0)
+	# Spread only the first practice departures across the opening seven minutes.
+	# Later releases keep their separate four-to-ten-minute pit dwell below.
+	release_delay = cycle_rng.randf_range(0.0,420.0)
+	_configure_pit_approach()
+
+func configure_race_pits(session_node: Node, box_pose: Transform3D) -> void:
+	race_pit_cycle = true
+	practice_session = session_node
+	pit_box_pose = box_pose
+	race_plan.configure(self,int(ratings.get("variation_seed",0)))
+	cycle_rng.seed = int(ratings.get("variation_seed",0)) ^ 0xB017
+	_configure_pit_approach()
+	# Do not begin another lap if it would leave too little to reach this box.
+	# Include the approach and pit transit, especially with tiny test tanks.
+	var pit: PackedVector3Array = car.track_data.pit_path
+	var box: Vector3 = car.track.to_local(box_pose.origin)
+	var transit_m := 300.0
+	var last := pit[0]
+	for point in pit:
+		if point.x >= box.x:
+			break
+		transit_m += last.distance_to(point)
+		last = point
+	transit_m += last.distance_to(box)+35.0
+	var state = car.player_state
+	pit_fuel_trigger_gal = maxf(state.fuel_per_lap_gal,(race_length_m+transit_m)*state.fuel_per_lap_gal/state.fuel_reference_lap_m)
+
+func _configure_pit_approach() -> void:
 	var entry: Vector3 = car.track_data.pit_path[0]
 	var nearest := 0
 	for i in range(race.size()):
@@ -520,7 +562,7 @@ func _timed_laps() -> int:
 	return laps
 
 func _update_car_collisions() -> void:
-	car_ghost = mode == Mode.WAITING or mode == Mode.PIT_ENTRY or mode == Mode.PIT_EXIT or car.player_state.is_in_pit_lane
+	car_ghost = race_plan.retired or mode == Mode.WAITING or mode == Mode.PIT_ENTRY or mode == Mode.PIT_EXIT or car.player_state.is_in_pit_lane
 	car.set_meta("pit_ghost",car_ghost)
 	for other in rivals:
 		if other == car:
@@ -533,6 +575,8 @@ func _update_car_collisions() -> void:
 			other.remove_collision_exception_with(car)
 
 func _update_practice_cycle() -> bool:
+	if race_pit_cycle:
+		return _update_race_pits()
 	if not practice_cycle:
 		return false
 	if mode == Mode.RACING and (_timed_laps()-stint_start_laps >= stint_laps or practice_session.status == practice_session.Status.FINISHED):
@@ -545,6 +589,7 @@ func _update_practice_cycle() -> bool:
 			car.reset_dynamics()
 			car.player_state.speed_mps = 0.0
 			mode = Mode.WAITING
+			car.player_state.park_in_stall()
 			completed_stints += 1
 			release_delay = elapsed+cycle_rng.randf_range(240.0,600.0)
 			stint_laps = cycle_rng.randi_range(6,20)
@@ -553,11 +598,48 @@ func _update_practice_cycle() -> bool:
 			return true
 	return false
 
+func _update_race_service() -> bool:
+	if not race_pit_cycle or service_started < 0.0:
+		return false
+	var state = car.player_state
+	var progress := clampf((elapsed-service_started)/service_duration_seconds,0.0,1.0)
+	state.fuel_gal = lerpf(service_start_fuel,state.fuel_capacity_gal,progress)
+	state.fuel_changed.emit()
+	if progress < 1.0 or practice_session.status != practice_session.Status.RUNNING:
+		return true
+	state.selected_fuel_gal = state.fuel_capacity_gal
+	state.pit_stall_state = state.StallState.STOPPED
+	completed_fuel_stops += 1
+	service_started = -1.0
+	release_delay = elapsed
+	_build_departure()
+	index = 0
+	return false
+
+func _update_race_pits() -> bool:
+	if mode == Mode.RACING and practice_session.status == practice_session.Status.RUNNING:
+		# Pit with about one lap left, allowing enough fuel for the stall transit.
+		if posmod(index-pit_entry_index,race.size()) < 8 and car.player_state.fuel_gal <= pit_fuel_trigger_gal:
+			_begin_pit_entry()
+	if mode == Mode.PIT_ENTRY:
+		var position: Vector3 = car.track.to_local(car.global_position)
+		if Vector2(position.x-route[-1].x,position.z-route[-1].z).length() < 1.5 and car.speed_mps < 1.0:
+			car.global_transform = pit_box_pose
+			car.reset_dynamics()
+			car.player_state.set_engine_running(false)
+			car.player_state.start_refuelling(cycle_rng.randf_range(REFUEL_MIN_SECONDS,REFUEL_MAX_SECONDS))
+			service_duration_seconds = car.player_state.service_duration_seconds
+			service_start_fuel = car.player_state.service_initial_fuel
+			service_started = elapsed
+			mode = Mode.WAITING
+			return true
+	return false
+
 func _begin_pit_entry() -> void:
 	mode = Mode.PIT_ENTRY
 	_update_car_collisions()
 	var timing = car.get_parent().get("lap_timing")
-	if timing != null:
+	if timing != null and not race_pit_cycle:
 		timing.invalidate(car)
 	route.clear()
 	var start: Vector3 = car.track.to_local(car.global_position)

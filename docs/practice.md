@@ -7,7 +7,11 @@ clock stops. F12 opens the combined session/roster panel, where a 10-lap rolling
 start race can be selected.
 Basic WASD driving and the pit limiter are described in `docs/driving.md`. Speed is
 live; other cockpit telemetry remains placeholder data. Session time follows Godot process time and pauses with
-the scene tree (there is no pause menu yet).
+the scene tree. The compact driving HUD only shows session, pit and essential
+vehicle/spectator state. F12, 9, F10 and 8 open the Session, Timing, Controls and
+Diagnostics screens in the shared race UI; selecting the active screen, choosing
+Drive or pressing Escape returns to the track. Player driving input is suspended
+while the UI is open, while the session clock and AI continue.
 
 ## Text-file pit-box placement
 
@@ -30,6 +34,23 @@ Track transformations are applied to these local coordinates.
 The old PlayerSpawn marker in the track scene is not used for practice.
 
 ## Runtime state
+
+Practice cars start parked with their engines off. The cockpit LCD shows Tyres,
+Fuel, and Leave Pits, with Fuel selected initially. Up/down selects a row and
+left/right selects a 5–35 US-gallon fuel load; Enter on Leave Pits starts the
+engine and enables driving. Fuel is live for the player: the 35-gallon tank holds
+132.5 L of methanol-equivalent fuel, adding up to 105 kg to the 700 kg dry chassis.
+It burns continuously with distance at a nominal 60 green-flag laps per full tank.
+Session panels take priority over the pit menu. After session expiry, departure
+is unavailable. The practice clock continues while parked.
+
+Returning within 1.2 m sideways and 2 m longitudinally of the assigned stall,
+within 15 degrees of its heading and below 1 km/h for 0.35 seconds, parks the
+player again. Leaving inhibits this detection until the car clears the stall.
+R also returns the player to a parked, engine-off state in practice.
+AI uses its existing arrival and departure schedule with the same engine state.
+Race driving is unchanged; `PlayerState.StallState` reserves SERVICING for future
+pit-stop rules, independently of the session and pit-lane state.
 
 - `Session.session_type`: PRACTICE, with QUALIFYING and RACE reserved enum values.
 - `Session.practice_duration_seconds`: 3600 by default; editable on the main
@@ -75,7 +96,7 @@ the Turn 4 green release, unrestricted player control and the ten-lap finish.
 
 ## AI practice pit cycles
 
-Each AI draws an initial departure delay of 4–120 seconds, then runs 6–20
+Each AI draws an initial departure delay of 0–7 minutes, then runs 6–20
 completed timed laps before taking the next pit entry. The out-lap does not count
 towards the run. Cars follow the last corners, brake into the pit lane and return
 to their assigned box. Once stopped, they wait a fresh random 4–10 minutes and
@@ -94,3 +115,25 @@ dwell and repeat departure, including collision exceptions and their restoration
 Pass `-- --bicycle` for the bicycle AI or `-- --natural` for six actual timed laps
 and a return to the last AI box. The default test advances the lap eligibility
 and dwell deadline to exercise the full driving cycle quickly.
+
+
+## Qualifying and the race grid
+
+Choose **Qualifying — 10 minutes** on Race Weekend. Qualifying uses practice's
+pit controls, AI departure schedule (the opening seven minutes), stint cycles
+and valid-lap timing. At 00:00 it immediately returns to Race Weekend; laps still
+in progress do not count. Results show each driver's fastest completed lap.
+**Go to Race** uses this order for every grid slot, including the player. Equal
+times retain entry order; drivers without a timed lap start behind timed drivers.
+Skipping qualifying retains the default roster grid. The pole sitter, including
+the player, triggers green when crossing the configured formation release point.
+
+The roster, session seed, race length and race fuel capacity carry between
+sessions. Starting qualifying again replaces its previous result. Continuing
+from weekend setup starts a fresh weekend. Use **F12 > Session > Return to Race
+Weekend** to leave practice and choose qualifying. Leaving qualifying early does
+not save an incomplete classification.
+
+Validation: `tools/validate_qualifying.gd` checks the clock, pit controls, AI
+schedule, classification, automatic menu return, retained settings, grid and
+player-led green flag.

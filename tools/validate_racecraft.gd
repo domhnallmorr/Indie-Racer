@@ -7,6 +7,8 @@ func _initialize() -> void:
 func place(car, distance: float, choice: float, speed: float) -> void:
 	var driver = car.get_node("Driver")
 	driver.mode = 2
+	car.set_meta("pit_ghost",false)
+	car.player_state.set_engine_running(true)
 	driver.index = 0
 	for i in range(driver.race.size()):
 		if driver.race_distances[i] <= distance:

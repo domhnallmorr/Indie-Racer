@@ -25,6 +25,8 @@ func _physics_process(delta: float) -> void:
 		sample(entry, track.to_local(entry.car.global_position), previous_time, clock)
 
 func sample(entry: Dictionary, position: Vector3, from_time: float, to_time: float) -> void:
+	if entry.get("retired",false):
+		return
 	var previous: Vector3 = entry.previous
 	entry.previous = position
 	for i in range(gates.size()):
@@ -40,7 +42,11 @@ func sample(entry: Dictionary, position: Vector3, from_time: float, to_time: flo
 		var fraction := before/(before-after)
 		var crossing := previous.lerp(position,fraction)
 		var lateral := (crossing-center).dot(normal.cross(Vector3.UP))
-		if absf(lateral) > gate.half_width_m or crossing.y < -1 or crossing.y > 6:
+		# Race pit lane runs parallel to the front straight and bypasses part of
+		# T1/T2. Accept the same ordered timing planes on its authored pavement.
+		# Bound the extension so the opposite side's plane cannot reset this lap.
+		var race_pit_crossing: bool = absf(lateral) <= 50.0 and session != null and session.session_type == session.SessionType.RACE and entry.car.track_data.contains_pit_lane(crossing)
+		if (absf(lateral) > gate.half_width_m and not race_pit_crossing) or crossing.y < -1 or crossing.y > 6:
 			continue
 		if backward:
 			entry.armed = false
@@ -61,6 +67,13 @@ func sample(entry: Dictionary, position: Vector3, from_time: float, to_time: flo
 		elif entry.armed and i == entry.expected:
 			entry.expected = (i+1)%gates.size()
 
+func retire(car: Node3D, reason: String) -> void:
+	for entry in entries:
+		if entry.car == car:
+			entry["retired"] = true
+			entry["retirement_reason"] = reason
+			entry["retirement_time"] = clock
+
 func invalidate(car: Node3D) -> void:
 	for entry in entries:
 		if entry.car == car:
@@ -72,6 +85,7 @@ func reset_for_race() -> void:
 	clock = 0.0
 	for entry in entries:
 		entry.previous = track.to_local(entry.car.global_position)
+		entry["retired"] = false
 		entry.armed = false
 		entry.expected = 0
 		entry.started = 0.0
@@ -85,6 +99,8 @@ func standings() -> Array[Dictionary]:
 		sorted.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
 			if a.laps != b.laps:
 				return a.laps > b.laps
+			if a.get("retired",false) != b.get("retired",false):
+				return not a.get("retired",false)
 			var a_progress: int = 4 if a.expected == 0 and a.armed else int(a.expected)
 			var b_progress: int = 4 if b.expected == 0 and b.armed else int(b.expected)
 			if a_progress != b_progress:
@@ -100,6 +116,39 @@ func standings() -> Array[Dictionary]:
 			return true
 		return a.best < b.best)
 	return sorted
+
+## Physical order around the circuit, independent of practice qualifying times.
+## Checkpoint progress provides the main ordering; distance to the next checkpoint
+## resolves cars which are in the same quarter of the lap.
+func track_order() -> Array[Dictionary]:
+	var sorted := entries.duplicate()
+	sorted.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		var a_progress := _track_progress(a)
+		var b_progress := _track_progress(b)
+		if not is_equal_approx(a_progress,b_progress):
+			return a_progress > b_progress
+		return a.order < b.order)
+	return sorted
+
+func _track_progress(entry: Dictionary) -> float:
+	var stage := int(entry.expected)
+	if stage == 0 and entry.armed:
+		stage = gates.size()
+	var progress := float(entry.laps*gates.size()+stage)
+	if gates.is_empty():
+		return progress
+	var next_index := stage%gates.size()
+	var previous_index := posmod(next_index-1,gates.size())
+	var previous_gate: Array = gates[previous_index].point
+	var next_gate: Array = gates[next_index].point
+	var previous := Vector3(previous_gate[0],previous_gate[1],previous_gate[2])
+	var next := Vector3(next_gate[0],next_gate[1],next_gate[2])
+	var position: Vector3 = entry.previous
+	var travelled := Vector2(position.x-previous.x,position.z-previous.z).length()
+	var remaining := Vector2(position.x-next.x,position.z-next.z).length()
+	if travelled+remaining > .001:
+		progress += clampf(travelled/(travelled+remaining),0.0,.999)
+	return progress
 
 static func format_lap(seconds: float) -> String:
 	if seconds <= 0:

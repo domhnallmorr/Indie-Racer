@@ -2,6 +2,8 @@ extends RefCounted
 ## Dynamic single-track model. Body axes: u forward, v left, yaw positive left.
 ## Forces are integrated on the road plane. Collision/vertical support is external.
 var p: Dictionary
+var vehicle_mass_kg := 0.0
+var vehicle_yaw_inertia_kgm2 := 0.0
 var u := 0.0
 var v := 0.0
 var yaw_rate := 0.0
@@ -9,6 +11,7 @@ var steer := 0.0
 var front_omega := 0.0
 var rear_omega := 0.0
 var engine_omega := 0.0
+var engine_running := true
 var throttle := 0.0
 var gear := 1
 var automatic := true
@@ -30,7 +33,15 @@ const RPM_TO_RAD := TAU/60.0
 
 func configure(parameters: Dictionary) -> void:
 	p = parameters
+	vehicle_mass_kg = p.mass_kg
+	vehicle_yaw_inertia_kgm2 = p.yaw_inertia_kgm2
 	reset()
+
+func set_vehicle_mass(total_mass_kg: float) -> void:
+	vehicle_mass_kg = maxf(0.001,total_mass_kg)
+	# Fuel is carried near the car's centre, so retain the authored inertia shape
+	# while allowing the whole car to become easier to rotate as it burns off.
+	vehicle_yaw_inertia_kgm2 = p.yaw_inertia_kgm2*vehicle_mass_kg/p.mass_kg
 
 func reset() -> void:
 	u = 0
@@ -39,7 +50,7 @@ func reset() -> void:
 	steer = 0
 	front_omega = 0
 	rear_omega = 0
-	engine_omega = p.idle_rpm*RPM_TO_RAD
+	engine_omega = p.idle_rpm*RPM_TO_RAD if engine_running else 0.0
 	throttle = 0
 	gear = 1
 	shift_remaining = 0
@@ -51,6 +62,12 @@ func reset() -> void:
 
 func rpm() -> float:
 	return engine_omega/RPM_TO_RAD
+
+func set_engine_running(value: bool) -> void:
+	engine_running = value
+	engine_omega = p.idle_rpm*RPM_TO_RAD if value else 0.0
+	throttle = 0.0
+	clutch = 0.0
 
 func ratio(for_gear: int = 99) -> float:
 	if for_gear == 99:
@@ -106,14 +123,14 @@ func _integrate(dt: float, gas: float, brake: float, steering_input: float, gx: 
 	# Airborne cars still have no tyre forces or yaw/sideslip stability intervention.
 	var steering_assist: float = p.assistance_strength
 	var aero_load: float = .5*p.air_density_kg_m3*p.downforce_area_m2*speed*speed
-	var safe_lateral_accel: float = p.friction_coefficient*grip_scale*(gn+aero_load/p.mass_kg)*p.corner_grip_fraction
+	var safe_lateral_accel: float = p.friction_coefficient*grip_scale*(gn+aero_load/vehicle_mass_kg)*p.corner_grip_fraction
 	var safe_lock := rad_to_deg(atan(p.wheelbase_m*safe_lateral_accel/maxf(speed*speed,1)))
 	# Geometric steering alone omits the extra angle needed for tyre slip.
 	safe_lock *= p.steering_range_multiplier
 	lock = lerpf(lock,minf(lock,safe_lock),steering_assist)
 	var steering_rate: float = lerpf(p.steering_rate_deg_s,minf(p.steering_rate_deg_s,lock/p.steering_response_s),steering_assist)
 	steer = move_toward(steer,clampf(steering_input,-1,1)*deg_to_rad(lock),deg_to_rad(steering_rate)*dt)
-	var opening := clampf(gas,0,1)
+	var opening := clampf(gas,0,1) if engine_running else 0.0
 	if is_finite(cap):
 		opening *= clampf((cap-speed)/1.0,0,1)
 	if rpm() >= p.redline_rpm or speed >= cap or (gear == -1 and speed >= p.reverse_limit_kph/3.6):
@@ -126,7 +143,7 @@ func _integrate(dt: float, gas: float, brake: float, steering_input: float, gx: 
 	var engagement: float = clampf((rpm()-p.idle_rpm)/(p.launch_rpm-p.idle_rpm),0,1)
 	if absf(rear_omega*ratio_value) > p.idle_rpm*RPM_TO_RAD:
 		engagement = 1
-	if gear == 0 or shift_remaining > 0:
+	if gear == 0 or shift_remaining > 0 or not engine_running:
 		engagement = 0
 	clutch = move_toward(clutch,engagement,p.clutch_engagement_rate_s*dt)
 	var clutch_torque: float = clampf((engine_omega-rear_omega*ratio_value)*p.clutch_stiffness_nm_s,-p.clutch_capacity_nm*clutch,p.clutch_capacity_nm*clutch)
@@ -134,12 +151,17 @@ func _integrate(dt: float, gas: float, brake: float, steering_input: float, gx: 
 	engine_torque += clampf((p.idle_rpm*RPM_TO_RAD-engine_omega)*p.idle_control_gain,0,p.idle_control_max_nm)
 	engine_omega = maxf(p.idle_rpm*RPM_TO_RAD*.8,engine_omega+(engine_torque-clutch_torque)/p.inertia_kgm2*dt)
 	var drive_torque: float = clutch_torque*ratio_value*p.efficiency
+	if not engine_running:
+		engine_omega = 0.0
+		clutch = 0.0
+		throttle = 0.0
+		drive_torque = 0.0
 	var b: float = p.wheelbase_m*p.front_weight_fraction
 	var a: float = p.wheelbase_m-b
 	downforce_n = .5*p.air_density_kg_m3*p.downforce_area_m2*speed*speed if grounded else 0.0
 	drag_n = .5*p.air_density_kg_m3*p.drag_area_m2*speed*speed
-	var weight: float = p.mass_kg*gn if grounded else 0.0
-	var transfer: float = clampf(p.mass_kg*acceleration*p.cg_height_m/p.wheelbase_m,-weight*.35,weight*.35)
+	var weight: float = vehicle_mass_kg*gn if grounded else 0.0
+	var transfer: float = clampf(vehicle_mass_kg*acceleration*p.cg_height_m/p.wheelbase_m,-weight*.35,weight*.35)
 	front_load = maxf(0,weight*p.front_weight_fraction+downforce_n*p.front_downforce_fraction-transfer)
 	rear_load = maxf(0,weight*(1-p.front_weight_fraction)+downforce_n*(1-p.front_downforce_fraction)+transfer)
 	var front_lateral := v+a*yaw_rate
@@ -178,11 +200,11 @@ func _integrate(dt: float, gas: float, brake: float, steering_input: float, gx: 
 	var resistance := Vector2(u,v)/maxf(speed,.5)*(drag_n+rolling)
 	var force_x := front_x+rear.x-resistance.x
 	var force_y := front_y+rear.y-resistance.y
-	var ax: float = force_x/p.mass_kg+gx
+	var ax: float = force_x/vehicle_mass_kg+gx
 	var old_u := u
 	u += (ax+v*yaw_rate)*dt
-	v += (force_y/p.mass_kg+gy-old_u*yaw_rate)*dt
-	yaw_rate += (a*front_y-b*rear.y)/p.yaw_inertia_kgm2*dt
+	v += (force_y/vehicle_mass_kg+gy-old_u*yaw_rate)*dt
+	yaw_rate += (a*front_y-b*rear.y)/vehicle_yaw_inertia_kgm2*dt
 	if assist > 0:
 		var requested_yaw: float = u*tan(steer)/p.wheelbase_m
 		var yaw_cap: float = safe_lateral_accel/maxf(absf(u),3)

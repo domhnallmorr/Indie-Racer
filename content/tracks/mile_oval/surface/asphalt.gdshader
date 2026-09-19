@@ -1,6 +1,9 @@
 shader_type spatial;
 // Track-local coordinates keep the material attached when the scene is moved.
 uniform vec3 track_origin = vec3(0.0);
+uniform sampler2D racing_line_map : filter_linear, repeat_enable;
+uniform float rubber_strength : hint_range(0.0, 0.3) = 0.15;
+uniform float rubber_half_width_m : hint_range(1.0, 4.0) = 2.2;
 varying vec2 road_position;
 float hash(vec2 p) {
  return fract(sin(dot(p, vec2(127.1,311.7))) * 43758.5453);
@@ -78,8 +81,20 @@ void fragment() {
    }
   }
  }
- ALBEDO = mix(asphalt,asphalt*repair_tone,patch);
- ROUGHNESS = .96;
+ // Rubber follows the authored racing line, strictly inside the two turns.
+ // The 45 m end fades remove it entirely before either straight begins.
+ float turn_s = mod(road.x,804.672)-411.9729183;
+ float corner = smoothstep(0.0,45.0,turn_s)*(1.0-smoothstep(347.6990817,392.6990817,turn_s));
+ float line_offset = texture(racing_line_map,vec2(road.x/1609.344,.5)).r*20.0-10.0;
+ float across_line = road.y-line_offset;
+ float feather = (noise(vec2(road.x*.12,road.y*.9))-.5)*.3;
+ float groove = 1.0-smoothstep(rubber_half_width_m*.3,rubber_half_width_m+1.0,abs(across_line)+feather);
+ float streak = mix(noise(vec2(road.x*.075,across_line*7.0)),.5,smoothstep(.04,.22,footprint));
+ float rubber = corner*groove*(.8+.2*streak);
+ // Keep apron/pit lane and the painted track edges clean.
+ rubber *= 1.0-smoothstep(8.8,9.5,abs(road.y));
+ ALBEDO = mix(asphalt,asphalt*repair_tone,patch)*(1.0-rubber_strength*rubber);
+ ROUGHNESS = .96-.025*rubber;
  SPECULAR = .12;
 }
 

@@ -4,7 +4,7 @@ var values: Dictionary = {}
 var errors: Array[String] = []
 const NUMERIC = {
 	"assists": ["assistance_strength","steering_response_s","corner_grip_fraction","steering_range_multiplier","yaw_stability_rate_s","sideslip_damping_rate_s","traction_slip_limit","braking_slip_limit"],
-	"chassis": ["mass_kg","wheelbase_m","front_weight_fraction","cg_height_m","yaw_inertia_kgm2","brake_force_n","front_brake_bias","steering_lock_deg","high_speed_lock_deg","steering_reduction_speed_mps","steering_rate_deg_s","surface_step_m"],
+	"chassis": ["mass_kg","fuel_capacity_gal","fuel_density_kg_l","fuel_range_laps","fuel_reference_lap_m","wheelbase_m","front_weight_fraction","cg_height_m","yaw_inertia_kgm2","brake_force_n","front_brake_bias","steering_lock_deg","high_speed_lock_deg","steering_reduction_speed_mps","steering_rate_deg_s","surface_step_m"],
 	"tires": ["front_radius_m","rear_radius_m","front_cornering_stiffness_n_rad","rear_cornering_stiffness_n_rad","longitudinal_stiffness_n","reference_load_n","load_stiffness_exponent","friction_coefficient","grass_grip_multiplier","rolling_resistance","front_axle_inertia_kgm2","rear_axle_inertia_kgm2","slip_reference_speed_mps"],
 	"engine": ["idle_rpm","redline_rpm","inertia_kgm2","throttle_rate_s","idle_control_gain","idle_control_max_nm"],
 	"gearbox": ["reverse_ratio","final_drive","efficiency","shift_time_s","automatic_upshift_rpm","automatic_downshift_rpm","launch_rpm","clutch_capacity_nm","clutch_stiffness_nm_s","clutch_engagement_rate_s","direction_change_max_mps","reverse_limit_kph"],

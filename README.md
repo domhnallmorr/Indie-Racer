@@ -51,7 +51,8 @@ The startup scene begins a [60-minute practice session](docs/practice.md) with t
 car in a text-configured pit box. [WASD driving](docs/driving.md) is available with an
 80 km/h pit limiter that ends before Turn 1. Keys 1/2/3/4 select overview, pits,
 banking, or the car; 5 returns to the cockpit. Exterior views use right-drag orbit
-and wheel zoom. See [cockpit controls](docs/cockpit.md), [Mile Oval](docs/mile_oval.md)
+and wheel zoom. T selects an automatic TV trackside view; numpad + / - cycles through
+the cars in their current order around the circuit. See [cockpit controls](docs/cockpit.md), [Mile Oval](docs/mile_oval.md)
 and [Open Wheel 95](docs/open_wheel.md) for Blender workflows and dimensions.
 [Player bicycle physics](docs/player_physics.md) now supplies tyre slip, aero and
 six-speed gearing from separate CFG files. W accelerates, S brakes, V selects reverse

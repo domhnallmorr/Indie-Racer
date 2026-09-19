@@ -1,6 +1,19 @@
 # Practice lap timing
 
-Press **9** to show/hide the timing panel in the top-right corner. It starts hidden
+The bottom-right driving panel starts on **Lap Timing**. Click its tabs or use
+**F1** (Lap Timing), **F2** (Standings), and **F3** (Fuel) to change the display
+without interrupting driving. It hides while the full session menu is open and
+remembers the selected page when returning to Drive.
+
+Lap Timing shows the current lap, laps to go in a race, position, current time,
+last lap and best lap. Practice also shows the session time remaining. Untimed
+out-laps show dashes. Standings shows five drivers around the player, highlighted
+in amber; practice ranks by best lap and races use laps and track progress.
+The full field remains available on **9**. Fuel shows live US gallons/litres,
+tank capacity, modelled consumption per lap, estimated range and pit service
+status. Fuel turns red below three estimated laps remaining.
+
+Press **9** to open/close the Timing screen in the shared race UI. It starts hidden
 and works in cockpit and exterior views. Rows show position, driver, best lap,
 last lap and completed timed laps. The player row is highlighted.
 

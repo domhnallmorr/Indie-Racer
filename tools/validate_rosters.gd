@@ -54,7 +54,7 @@ func validate() -> void:
 	driver._physics_process(1.0/60.0)
 	check(absf(driver.form-original) <= .002/60.0+.000001, "Form changes smoothly")
 	current_scene = main
-	var panel = main.get_node("HUD/RosterPanel")
+	var panel = main.get_node("HUD/RaceUI/Shell/Layout/Content/Pages/RosterPanel")
 	panel.choices.select(panel.paths.find("res://content/rosters/default/manifest.json"))
 	panel.seed_input.value = 5678
 	panel.start.pressed.emit()

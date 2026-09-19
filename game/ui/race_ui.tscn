@@ -1,0 +1,177 @@
+[gd_scene load_steps=8 format=3]
+
+[ext_resource type="Script" path="res://game/ui/race_ui.gd" id="1"]
+[ext_resource type="PackedScene" path="res://game/ui/roster_panel.tscn" id="2"]
+[ext_resource type="PackedScene" path="res://game/ui/timing_panel.tscn" id="3"]
+[ext_resource type="PackedScene" path="res://game/ui/controls_panel.tscn" id="4"]
+[ext_resource type="PackedScene" path="res://game/ui/physics_debug.tscn" id="5"]
+
+[sub_resource type="StyleBoxFlat" id="ShellStyle"]
+bg_color = Color(0.018, 0.027, 0.039, 0.98)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.18, 0.25, 0.32, 1)
+corner_radius_top_left = 5
+corner_radius_top_right = 5
+corner_radius_bottom_right = 5
+corner_radius_bottom_left = 5
+
+[sub_resource type="StyleBoxFlat" id="NavStyle"]
+bg_color = Color(0.03, 0.047, 0.066, 1)
+content_margin_left = 14.0
+content_margin_top = 18.0
+content_margin_right = 14.0
+content_margin_bottom = 18.0
+
+[node name="RaceUI" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 1
+script = ExtResource("1")
+
+[node name="Dim" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0, 0, 0, 0.42)
+mouse_filter = 2
+
+[node name="Shell" type="PanelContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 18.0
+offset_top = 18.0
+offset_right = -150.0
+offset_bottom = -18.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_styles/panel = SubResource("ShellStyle")
+
+[node name="Layout" type="HBoxContainer" parent="Shell"]
+layout_mode = 2
+theme_override_constants/separation = 0
+
+[node name="Navigation" type="PanelContainer" parent="Shell/Layout"]
+custom_minimum_size = Vector2(170, 0)
+layout_mode = 2
+theme_override_styles/panel = SubResource("NavStyle")
+
+[node name="Buttons" type="VBoxContainer" parent="Shell/Layout/Navigation"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Brand" type="Label" parent="Shell/Layout/Navigation/Buttons"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.95, 0.79, 0.25, 1)
+theme_override_font_sizes/font_size = 21
+text = "OVAL 95"
+
+[node name="Rule" type="HSeparator" parent="Shell/Layout/Navigation/Buttons"]
+layout_mode = 2
+
+[node name="Drive" type="Button" parent="Shell/Layout/Navigation/Buttons"]
+layout_mode = 2
+text = "DRIVE"
+
+[node name="Session" type="Button" parent="Shell/Layout/Navigation/Buttons"]
+layout_mode = 2
+text = "SESSION"
+
+[node name="Timing" type="Button" parent="Shell/Layout/Navigation/Buttons"]
+layout_mode = 2
+text = "TIMING"
+
+[node name="Controls" type="Button" parent="Shell/Layout/Navigation/Buttons"]
+layout_mode = 2
+text = "CONTROLS"
+
+[node name="Diagnostics" type="Button" parent="Shell/Layout/Navigation/Buttons"]
+layout_mode = 2
+text = "DIAGNOSTICS"
+
+[node name="Spacer" type="Control" parent="Shell/Layout/Navigation/Buttons"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="Hint" type="Label" parent="Shell/Layout/Navigation/Buttons"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.58, 0.65, 0.72, 1)
+theme_override_font_sizes/font_size = 12
+text = "F12  Session\n9       Timing\nF10   Controls\n8       Diagnostics\nEsc   Drive"
+
+[node name="Content" type="VBoxContainer" parent="Shell/Layout"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 6
+
+[node name="PageTitle" type="Label" parent="Shell/Layout/Content"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.95, 0.79, 0.25, 1)
+theme_override_font_sizes/font_size = 22
+text = "SESSION"
+
+[node name="Divider" type="HSeparator" parent="Shell/Layout/Content"]
+layout_mode = 2
+
+[node name="Pages" type="Control" parent="Shell/Layout/Content"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="RosterPanel" parent="Shell/Layout/Content/Pages" instance=ExtResource("2")]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 18.0
+offset_top = 8.0
+offset_right = -18.0
+offset_bottom = -12.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="TimingPanel" parent="Shell/Layout/Content/Pages" instance=ExtResource("3")]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 18.0
+offset_top = 8.0
+offset_right = -18.0
+offset_bottom = -12.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="ControlsPanel" parent="Shell/Layout/Content/Pages" instance=ExtResource("4")]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 18.0
+offset_top = 8.0
+offset_right = -18.0
+offset_bottom = -12.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="PhysicsDebug" parent="Shell/Layout/Content/Pages" instance=ExtResource("5")]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 18.0
+offset_top = 8.0
+offset_right = -18.0
+offset_bottom = -12.0
+grow_horizontal = 2
+grow_vertical = 2
