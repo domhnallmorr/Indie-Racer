@@ -1,6 +1,6 @@
 @tool
 extends Node3D
-## Match all 27 painted boxes, including boxes unused by the current roster.
+## 26 race boxes plus the dedicated pace-car bay at the pit exit.
 const Station = preload("res://content/tracks/mile_oval/pit_station/pit_station.gd")
 const COUNT := 27
 const STRAIGHT := (1609.344-TAU*125.0)/2.0
@@ -14,6 +14,9 @@ func _ready() -> void:
 		station.name = "PitStation%02d" % (index+1)
 		station.station_index = index
 		station.team_colour = Color(PALETTE[index%PALETTE.size()])
+		if index == COUNT-1:
+			station.team_colour = Color("e8b632")
+			station.set_meta("pit_box_id","pace_car_pit")
 		station.position = Vector3(120.0+(index+.5)*SPACING-STRAIGHT/2.0,0,84.45)
 		station.set_meta("painted_box_number",index+1)
 		add_child(station)

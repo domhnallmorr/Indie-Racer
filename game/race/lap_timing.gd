@@ -101,9 +101,11 @@ func standings() -> Array[Dictionary]:
 				return a.laps > b.laps
 			if a.get("retired",false) != b.get("retired",false):
 				return not a.get("retired",false)
-			var a_progress: int = 4 if a.expected == 0 and a.armed else int(a.expected)
-			var b_progress: int = 4 if b.expected == 0 and b.armed else int(b.expected)
-			if a_progress != b_progress:
+			# A bunched caution train often shares one timing sector. Resolve its
+			# real order within that sector rather than reverting to grid order.
+			var a_progress := _track_progress(a)
+			var b_progress := _track_progress(b)
+			if not is_equal_approx(a_progress,b_progress):
 				return a_progress > b_progress
 			return a.order < b.order)
 		return sorted

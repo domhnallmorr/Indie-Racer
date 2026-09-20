@@ -9,6 +9,7 @@ enum Status { NOT_STARTED, FORMATION, RUNNING, FINISHED }
 var session_type: SessionType = SessionType.PRACTICE
 var status: Status = Status.NOT_STARTED
 var remaining_seconds := 0.0
+var race_control: Node
 
 func start_practice() -> void:
 	session_type = SessionType.PRACTICE

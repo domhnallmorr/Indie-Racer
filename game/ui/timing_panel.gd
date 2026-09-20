@@ -75,5 +75,5 @@ func refresh() -> void:
 			values[1] += " — OUT (engine)"
 		for cell in range(5):
 			rows[i*5+cell].text = values[cell]
-			rows[i*5+cell].tooltip_text = "Engine failure" if entry.get("retired",false) else ("Fuel strategy: +%d laps per tank" % int(entry.car.get_meta("strategy_extra_laps",0)) if racing else "")
+			rows[i*5+cell].tooltip_text = str(entry.get("retirement_reason","Retired")) if entry.get("retired",false) else ("Returning to pits — Other" if entry.car.get_meta("withdrawing",false) else ("Fuel strategy: +%d laps per tank" % int(entry.car.get_meta("strategy_extra_laps",0)) if racing else ""))
 			rows[i*5+cell].modulate = Color(1,.9,.5) if entry.name == "Player" else Color.WHITE

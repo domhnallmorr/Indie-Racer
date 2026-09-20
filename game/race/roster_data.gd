@@ -43,6 +43,10 @@ func load_roster(path: String) -> bool:
 			errors.append("Invalid/duplicate entry id or colour: "+entry.id)
 			continue
 		ids[entry.id] = true
+		if entry.has("livery"):
+			if not content_path(entry.livery) or not ResourceLoader.exists(entry.livery, "Texture2D"):
+				errors.append("Invalid livery texture: "+entry.id)
+				continue
 		var ratings = entry.get("ratings", {})
 		if not ratings is Dictionary:
 			ratings = {}

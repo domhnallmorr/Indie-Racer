@@ -8,6 +8,79 @@ func capture() -> void:
 	root.add_child(scene)
 	var car = load("res://content/vehicles/open_wheel/models/open_wheel.glb").instantiate()
 	scene.add_child(car)
+	var sharpe := "--sharpe" in OS.get_cmdline_user_args()
+	var hornish := "--hornish" in OS.get_cmdline_user_args()
+	var lazier := "--lazier" in OS.get_cmdline_user_args()
+	var boat := "--boat" in OS.get_cmdline_user_args()
+	var salazar := "--salazar" in OS.get_cmdline_user_args()
+	var giaffone := "--giaffone" in OS.get_cmdline_user_args()
+	var unser := "--unser" in OS.get_cmdline_user_args()
+	var cheever := "--cheever" in OS.get_cmdline_user_args()
+	var calkins := "--calkins" in OS.get_cmdline_user_args()
+	var dare := "--dare" in OS.get_cmdline_user_args()
+	var ward := "--ward" in OS.get_cmdline_user_args()
+	var buhl := "--buhl" in OS.get_cmdline_user_args()
+	var hattori := "--hattori" in OS.get_cmdline_user_args()
+	var dismore := "--dismore" in OS.get_cmdline_user_args()
+	var beechler := "--beechler" in OS.get_cmdline_user_args()
+	var mcgehee := "--mcgehee" in OS.get_cmdline_user_args()
+	var custom_skin := sharpe or hornish or lazier or boat or salazar or giaffone or unser or cheever or calkins or dare or ward or buhl or hattori or dismore or beechler or mcgehee
+	var prefix := "lazier_2001_" if lazier else ("hornish_2001_" if hornish else ("sharpe_2001_" if sharpe else "car_2001_"))
+	if boat:
+		prefix = "boat_2001_"
+	if salazar:
+		prefix = "salazar_2001_"
+	if giaffone:
+		prefix = "giaffone_2001_"
+	if unser:
+		prefix = "unser_2001_"
+	if cheever:
+		prefix = "cheever_2001_"
+	if calkins:
+		prefix = "calkins_2001_"
+	if dare:
+		prefix = "dare_2001_"
+	if ward:
+		prefix = "ward_2001_"
+	if buhl:
+		prefix = "buhl_2001_"
+	if hattori:
+		prefix = "hattori_2001_"
+	if dismore:
+		prefix = "dismore_2001_"
+	if beechler:
+		prefix = "beechler_2001_"
+	if mcgehee:
+		prefix = "mcgehee_2001_"
+	if custom_skin:
+		var skin := "buddy_lazier_2001.png" if lazier else ("sam_hornish_2001.png" if hornish else "scott_sharpe_2001.png")
+		if boat:
+			skin = "billy_boat_2001.png"
+		if salazar:
+			skin = "eliseo_salazar_2001.png"
+		if giaffone:
+			skin = "felipe_giaffone_2001.png"
+		if unser:
+			skin = "al_unser_jr_2001.png"
+		if cheever:
+			skin = "eddie_cheever_2001.png"
+		if calkins:
+			skin = "buzz_calkins_2001.png"
+		if dare:
+			skin = "airton_dare_2001.png"
+		if ward:
+			skin = "jeff_ward_2001.png"
+		if buhl:
+			skin = "robbie_buhl_2001.png"
+		if hattori:
+			skin = "shigeaki_hattori_2001.png"
+		if dismore:
+			skin = "mark_dismore_2001.png"
+		if beechler:
+			skin = "donnie_beechler_2001.png"
+		if mcgehee:
+			skin = "robbie_mcgehee_2001.png"
+		assert(preload("res://content/vehicles/open_wheel/liveries/apply_livery.gd").apply(car,load("res://content/vehicles/open_wheel/liveries/"+skin)) == 14)
 	var low := Vector3(INF,INF,INF)
 	var high := Vector3(-INF,-INF,-INF)
 	var paint_count := 0
@@ -68,13 +141,19 @@ func capture() -> void:
 	camera.projection = Camera3D.PROJECTION_ORTHOGONAL
 	camera.size = 4.2
 	camera.make_current()
-	for view in ["front","rear","side"]:
+	for view in (["front","rear","side","opposite"] if custom_skin else ["front","rear","side"]):
 		camera.position = Vector3(5,3.1,-7) if view == "front" else (Vector3(4,2.3,7) if view == "rear" else Vector3(8,1.3,0))
+		if view == "opposite":
+			camera.position = Vector3(-8,1.3,0)
 		camera.look_at(Vector3(0,0.45,0))
 		for i in range(6):
 			await process_frame
 		await RenderingServer.frame_post_draw
-		root.get_texture().get_image().save_png("res://builds/car_2001_"+view+".png")
+		root.get_texture().get_image().save_png("res://builds/"+prefix+view+".png")
+	if custom_skin:
+		print(prefix.to_upper(), " CAPTURE PASSED: 14 textured panels and vehicle geometry checks.")
+		quit()
+		return
 	# Exercise the future skin path with a diagnostic texture on this instance only.
 	var atlas := Image.create(256,256,false,Image.FORMAT_RGBA8)
 	for y in range(256):

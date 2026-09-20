@@ -10,7 +10,8 @@
   "straight_banking_deg": 0,
   "racing_width_m": 20,
   "apron_width_m": 6,
-  "pit_boxes": 27,
+  "pit_boxes": 26,
   "length_m": 1609.344,
-  "direction": "counterclockwise"
+  "direction": "counterclockwise",
+  "pace_car_boxes": 1
 }

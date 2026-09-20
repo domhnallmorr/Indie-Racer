@@ -24,6 +24,7 @@ var fuel_reference_lap_m := 1609.344
 var selected_fuel_gal := 35.0
 var fuel_gal := 35.0
 var fuel_per_lap_gal := 35.0/60.0
+var fuel_burn_factor := 1.0
 var service_remaining := 0.0
 var service_initial_fuel := 0.0
 var service_duration_seconds := 10.0
@@ -53,7 +54,7 @@ func set_selected_fuel(delta_gal: float) -> void:
 func consume_distance(distance_m: float) -> void:
 	if not engine_running or distance_m <= 0.0 or fuel_gal <= 0.0:
 		return
-	var burn_per_m := fuel_per_lap_gal/fuel_reference_lap_m
+	var burn_per_m := fuel_per_lap_gal/fuel_reference_lap_m*fuel_burn_factor
 	var previous := fuel_gal
 	fuel_gal = maxf(0.0,fuel_gal-distance_m*burn_per_m)
 	if not is_equal_approx(previous,fuel_gal):
@@ -107,6 +108,9 @@ func _physics_process(delta: float) -> void:
 		return
 	var aligned := car.global_basis.z.normalized().dot(stall_pose.basis.z.normalized()) >= cos(deg_to_rad(15))
 	if inside_stall() and aligned and absf(car.speed_mps) < 1.0/3.6:
+		if session.race_control != null and not session.race_control.may_service(car):
+			stopped_seconds = 0.0
+			return
 		stopped_seconds += delta
 		if stopped_seconds >= .35:
 			if session.session_type == session.SessionType.RACE:

@@ -280,6 +280,8 @@ func _pit_exit_speed() -> float:
 		if _merge_clear():
 			if remaining <= 25.0:
 				merge_committed = true
+				if race_pit_cycle and practice_session.race_control != null:
+					practice_session.race_control.reserve_merge(car)
 		else:
 			request = minf(request,sqrt(2*decel*maxf(0,remaining-5.0)))
 	return request
@@ -442,6 +444,8 @@ func _nearest_point(position: Vector3) -> Vector3:
 
 func _traffic_speed(request: float) -> float:
 	traffic_reason = "clear"
+	if race_pit_cycle and practice_session.race_control != null and practice_session.race_control.active():
+		request = minf(request,practice_session.race_control.target_speed(car))
 	if car_ghost:
 		return request
 	if mode == Mode.RACING and racecraft.enabled:
@@ -469,6 +473,9 @@ func _departure_clear() -> bool:
 
 func _merge_clear() -> bool:
 	merge_blocker = ""
+	if race_pit_cycle and practice_session.race_control != null and not practice_session.race_control.may_merge(self):
+		merge_blocker = "caution_queue"
+		return false
 	var position: Vector3 = car.track.to_local(car.global_position)
 	for other in rivals:
 		if other == car or other.get_meta("retired",false):
@@ -477,7 +484,7 @@ func _merge_clear() -> bool:
 		# Counting them as approaching race traffic can make neighbours wait
 		# for each other indefinitely when a larger field bunches at the merge.
 		var other_driver = other.get_node_or_null("Driver")
-		if other_driver != null and other_driver.mode != Mode.RACING:
+		if other_driver != null and other_driver.mode not in [Mode.RACING,Mode.FORMATION]:
 			continue
 		var p: Vector3 = car.track.to_local(other.global_position)
 		if absf(p.z+125) >= 9:
@@ -617,9 +624,12 @@ func _update_race_service() -> bool:
 	return false
 
 func _update_race_pits() -> bool:
-	if mode == Mode.RACING and practice_session.status == practice_session.Status.RUNNING:
+	var control = practice_session.race_control
+	var under_yellow: bool = control != null and control.active()
+	if (mode == Mode.RACING or (mode == Mode.FORMATION and under_yellow)) and practice_session.status == practice_session.Status.RUNNING:
 		# Pit with about one lap left, allowing enough fuel for the stall transit.
-		if posmod(index-pit_entry_index,race.size()) < 8 and car.player_state.fuel_gal <= pit_fuel_trigger_gal:
+		var wants_pit: bool = control.should_pit(self) if control != null else car.player_state.fuel_gal <= pit_fuel_trigger_gal
+		if posmod(index-pit_entry_index,race.size()) < 8 and wants_pit:
 			_begin_pit_entry()
 	if mode == Mode.PIT_ENTRY:
 		var position: Vector3 = car.track.to_local(car.global_position)
@@ -635,7 +645,9 @@ func _update_race_pits() -> bool:
 			return true
 	return false
 
-func _begin_pit_entry() -> void:
+func _begin_pit_entry(inside_return: bool = false, minimum_approach_m: float = 0.0) -> void:
+	if race_pit_cycle and practice_session.race_control != null and practice_session.race_control.active():
+		practice_session.race_control.commit_pit(car)
 	mode = Mode.PIT_ENTRY
 	_update_car_collisions()
 	var timing = car.get_parent().get("lap_timing")
@@ -647,14 +659,17 @@ func _begin_pit_entry() -> void:
 	# Follow Turn 3/4 before peeling off; a direct chord would cross the infield.
 	route.append(start)
 	var cursor := (index+1)%race.size()
-	var lateral_offset := start-race[index]
+	var lateral_offset := start-(_inside_return_point(index) if inside_return else race[index])
 	var travelled := 0.0
-	while cursor != (pit_approach_join_index+1)%race.size():
+	while cursor != (pit_approach_join_index+1)%race.size() or travelled < minimum_approach_m:
 		travelled += race[cursor].distance_to(race[posmod(cursor-1,race.size())])
-		route.append(race[cursor]+lateral_offset*maxf(0.0,1.0-travelled/80.0))
+		var point := _inside_return_point(cursor) if inside_return else race[cursor]
+		route.append(point+lateral_offset*maxf(0.0,1.0-travelled/(120.0 if inside_return else 80.0)))
 		cursor = (cursor+1)%race.size()
 	start = route[-1]
 	var tangent := (race[(pit_approach_join_index+1)%race.size()]-race[pit_approach_join_index]).normalized()
+	if inside_return:
+		tangent = (_inside_return_point((pit_approach_join_index+1)%race.size())-_inside_return_point(pit_approach_join_index)).normalized()
 	var end_tangent := (pit[1]-pit[0]).normalized()
 	var span := start.distance_to(pit[0])
 	for i in range(1,101):
@@ -677,6 +692,13 @@ func _begin_pit_entry() -> void:
 	for i in range(route.size()-1):
 		route_distances.append(route_distances[-1]+route[i].distance_to(route[i+1]))
 	index = 0
+
+func _inside_return_point(at_index: int) -> Vector3:
+	if racecraft.enabled:
+		# Keep the car centre 1.5 m inside the authored inner track boundary.
+		return racecraft.inner[at_index].move_toward(racecraft.outer[at_index],1.5)
+	var tangent := (race[(at_index+1)%race.size()]-race[at_index]).normalized()
+	return race[at_index]-tangent.cross(Vector3.UP)*6.5
 
 func _pit_entry_speed() -> float:
 	var position: Vector3 = car.track.to_local(car.global_position)

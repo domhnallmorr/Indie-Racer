@@ -1,6 +1,7 @@
 extends RefCounted
 ## Track-local coordinates; planar lane corridor plus the adjacent pit-box area.
 var pit_boxes: Array = []
+var pace_car_box := Transform3D.IDENTITY
 var pit_path := PackedVector3Array()
 var pit_box_area := PackedVector2Array()
 var half_width := 5.0
@@ -58,6 +59,10 @@ func load_config(path: String) -> Error:
 			return ERR_INVALID_DATA
 		ids.append(box.id)
 		pit_boxes.append(box)
+	var pace_box: Variant = data.get("pace_car_box", {})
+	if not pace_box is Dictionary or not _numbers(pace_box.get("position"),3) or not _number(pace_box.get("heading_deg")):
+		return ERR_INVALID_DATA
+	pace_car_box = Transform3D(Basis(Vector3.UP,deg_to_rad(pace_box.heading_deg)),Vector3(pace_box.position[0],pace_box.position[1],pace_box.position[2]))
 	var relative = lane.get("path_file")
 	if not relative is String or relative.is_absolute_path() or ".." in relative or ":" in relative:
 		return ERR_INVALID_DATA

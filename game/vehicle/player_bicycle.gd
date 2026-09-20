@@ -55,6 +55,15 @@ func drive_step(delta: float, throttle_input: float, brake_input: float, steerin
 	sim.set_vehicle_mass(parameters.values.mass_kg+player_state.fuel_mass_kg())
 	if not player_state.has_fuel():
 		throttle_input = 0.0
+	if human_controlled and player_state.session != null and player_state.session.race_control != null:
+		var control = player_state.session.race_control
+		if control.active() and not player_state.is_in_pit_lane:
+			# Gentle longitudinal assistance enforces the yellow target while the
+			# player retains steering and may brake harder at any time.
+			var target: float = control.target_speed(self)
+			if speed_mps > target:
+				throttle_input = 0.0
+				brake_input = maxf(brake_input,clampf((speed_mps-target)*.15,0,1))
 	if player_state.pit_stall_state in [player_state.StallState.STOPPED,player_state.StallState.SERVICING]:
 		throttle_input = 0.0
 		brake_input = 1.0

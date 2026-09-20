@@ -1,6 +1,6 @@
 # Pit stations
 
-27 stations align with all painted pit boxes, behind the infield pit wall. The 5.4 x 3.6 m canopies and equipment stay inside z=86.75, leaving the service apron clear. PitStations in track.tscn creates reusable stations at the same spacing as tools/build_mile_oval.py. No extra collision bodies. Occupied stations match car colours using assigned pit box IDs, including race-grid ordering. Unoccupied stations use a varied palette.
+26 race stations and one yellow pace-car station align with all 27 painted pit boxes, behind the infield pit wall. The 5.4 x 3.6 m canopies and equipment stay inside z=86.75, leaving the service apron clear. PitStations in track.tscn creates reusable stations at the same spacing as tools/build_mile_oval.py. No extra collision bodies. Occupied stations match car colours using assigned pit box IDs, including race-grid ordering. Unoccupied stations use a varied palette.
 
 Three CRT-style timing screens show illustrative static data, not live telemetry. Three transparent crew sprites use vertical-axis billboards; they are static photographic cutouts, not animated people. Equipment is native Godot geometry and participates in the existing static batching. Crew remains separate.
 

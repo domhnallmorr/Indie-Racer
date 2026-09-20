@@ -104,7 +104,11 @@ func advance(delta: float, gas: float, brake: float, steering_input: float,
 		grounded: bool = true, grip_scale: float = 1, speed_cap_mps: float = INF) -> void:
 	heading_change = 0
 	if automatic and gear > 0 and shift_remaining == 0:
-		if rpm() > p.automatic_upshift_rpm and gear < 6 and absf(rear_slip_ratio) < .20:
+		# Engine revs can remain high while the clutch reconnects after a shift.
+		# Require the current ratio's wheel-driven RPM too, or that rev flare
+		# immediately triggers more shifts before the car has accelerated.
+		var coupled_rpm: float = absf(rear_omega*ratio())/RPM_TO_RAD
+		if rpm() > p.automatic_upshift_rpm and coupled_rpm > p.automatic_upshift_rpm and gear < 6 and absf(rear_slip_ratio) < .20:
 			select_gear(gear+1)
 		elif rpm() < p.automatic_downshift_rpm and gear > 1:
 			select_gear(gear-1)

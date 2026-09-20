@@ -41,8 +41,8 @@ func validate() -> void:
 		view.make_current()
 		frame_start_usec = Time.get_ticks_usec()
 		process_frame.connect(record_frame)
-	if main.ai_cars.size() != 15 or main.track_data.pit_boxes.size() != 16:
-		push_error("Expected 15 AI and 16 pit boxes")
+	if main.ai_cars.size() != 15 or main.track_data.pit_boxes.size() != 26:
+		push_error("Expected 15 AI and 26 pit boxes")
 		quit(1)
 		return
 	var boxes := {}

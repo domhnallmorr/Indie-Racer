@@ -31,6 +31,7 @@ func _ready() -> void:
 	var guide := Label.new()
 	guide.text = "W / S\nThrottle / brake\n\nA / D\nSteer\n\nQ / E\nShift down / up\n\nM\nAutomatic / manual\n\nV / N\nReverse / neutral\n\nR\nReset to pit box or grid\n\n1–4\nExterior cameras\n\n5\nCockpit camera\n\n6 / 7\nPrevious / next opponent\n\nT\nTV trackside camera\n\nNumpad + / -\nNext / previous car in track order\n\nCockpit: [ / ] FOV\nPgUp / PgDn seat height\nHome resets cockpit view"
 	guide.text += "\n\nF1 / F2 / F3\nLap Timing / Standings / Fuel panel"
+	guide.text += "\n\nF8\nCall a test caution during a race"
 	guide.add_theme_font_size_override("font_size",14)
 	help.add_child(guide)
 	wheel_host = MarginContainer.new()

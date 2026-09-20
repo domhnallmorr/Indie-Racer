@@ -24,6 +24,9 @@ assigned race stall. The LCD shows the refill countdown; control is released
 automatically when service finishes. A finished session does not release cars
 from service.
 
+[Cautions](cautions.md) add pit closure/opening, emergency fuel permission,
+strategic early AI stops and controlled returns to the tail of the pace-car train.
+
 Regression checks:
 
 - `--headless --path . --script res://tools/validate_fuel.gd`

@@ -2,7 +2,8 @@
 
 A Godot 4 single-player oval racing project. Initial scope: simple but expandable
 simulation physics, a full AI field, and one flat oval inspired by Milwaukee Mile.
-Low-poly, mid-to-late 1990s presentation. No cautions or pit stops in version one.
+Low-poly, mid-to-late 1990s presentation. Races include fuel stops and
+[full-course cautions](docs/cautions.md), with pace-car pickup and single-file restarts.
 
 ## Layout
 

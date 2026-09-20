@@ -26,6 +26,7 @@ func run() -> void:
 	main.session.show_green()
 	var plans := {}
 	var sampled_failures := 0
+	var other_failures := 0
 	# Independent draws should approach 20%, with stable results for identical seeds.
 	var driver = main.ai_cars[0].get_node("Driver")
 	for seed_value in range(1000):
@@ -37,12 +38,15 @@ func run() -> void:
 		plans[plan.extra_range_laps] = true
 		if is_finite(plan.failure_progress):
 			sampled_failures += 1
+			if plan.failure_type == plan.FailureType.OTHER:
+				other_failures += 1
 			check(plan.failure_progress >= 3 and plan.failure_progress <= 57,"Failure is inside race")
 		driver.car.player_state.configure_fuel(driver.car.parameters.values)
 		var repeat = load("res://game/race/ai_race_plan.gd").new()
 		repeat.configure(driver,seed_value)
-		check(repeat.extra_range_laps == plan.extra_range_laps and repeat.failure_progress == plan.failure_progress,"Seed is repeatable")
+		check(repeat.extra_range_laps == plan.extra_range_laps and repeat.failure_progress == plan.failure_progress and repeat.failure_type == plan.failure_type,"Seed is repeatable")
 	check(plans.size() == 3 and sampled_failures > 150 and sampled_failures < 250,"Strategy mix and 20% failures")
+	check(other_failures > sampled_failures*.35 and other_failures < sampled_failures*.65,"Failures split roughly evenly between Engine and Other")
 	var entry: Dictionary = main.lap_timing.entries[1]
 	entry.laps = 4
 	entry.armed = true
@@ -51,6 +55,7 @@ func run() -> void:
 	var car = driver.car
 	car.speed_mps = 65.0
 	driver.race_plan.failure_progress = 4.0
+	driver.race_plan.failure_type = driver.race_plan.FailureType.ENGINE
 	driver._physics_process(1.0/60)
 	check(driver.race_plan.retired,"Scheduled failure triggers")
 	check(car.collision_layer == 0 and car.collision_mask == 0 and car.get_meta("pit_ghost"),"Failure disables collisions and traffic obstruction")
@@ -91,7 +96,7 @@ func run() -> void:
 		slow_driver._physics_process(1.0/60)
 	check(slow_driver.car.speed_mps == 0 and slow_driver.race_plan.stopped_time < .1,"Slow car completes pull-over before roadside dwell")
 	check(slow_driver.car.global_position.distance_to(before) > 2.0,"Low-speed failure reaches shoulder")
-	print("RACE EVENTS: failure draws=",sampled_failures,"/1000; ","PASSED" if failures.is_empty() else failures)
+	print("RACE EVENTS: failure draws=",sampled_failures,"/1000; Other=",other_failures,"; ","PASSED" if failures.is_empty() else failures)
 	main.free()
 	quit(0 if failures.is_empty() else 1)
 

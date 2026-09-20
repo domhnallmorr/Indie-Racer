@@ -144,6 +144,8 @@ func refresh() -> void:
 		status.text += "  •  Formation"
 	elif finished:
 		status.text += "  •  Finished"
+	elif session.race_control != null and session.race_control.active():
+		status.text += "  •  YELLOW"
 	lap_values["Lap"].text = str(mini(entry.laps + 1, session.race_laps)) if racing else (str(entry.laps + 1) if entry.armed else "OUT")
 	if formation:
 		lap_values["Lap"].text = "—"
@@ -175,4 +177,4 @@ func refresh() -> void:
 	match active_page:
 		0: footer.text = "Player  •  " + ("Timed lap" if entry.armed else "Cross start/finish to begin timing")
 		1: footer.text = "Positions %d–%d of %d  •  %s" % [first + 1, mini(first + 5, sorted.size()), sorted.size(), "Race order" if racing else "Best lap order"]
-		2: footer.text = "US gallons  •  Range estimated from the fuel model"
+		2: footer.text = "US gallons  •  Range at green pace"+("  •  Yellow burn: %.0f%%" % (state.fuel_burn_factor*100.0) if state.fuel_burn_factor < 1.0 else "")

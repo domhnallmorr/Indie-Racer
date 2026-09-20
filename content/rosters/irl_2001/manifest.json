@@ -1,0 +1,582 @@
+{
+  "schema_version": 1,
+  "id": "irl_2001",
+  "display_name": "2001 IRL",
+  "year": 2001,
+  "entries": [
+    {
+      "id": "Sharpe",
+      "driver_name": "Scott Sharpe",
+      "number": "8",
+      "team": "Delphi",
+      "colour": "#cf1422",
+      "car_spec": "res://content/car_specs/open_wheel_95.json",
+      "ratings": {
+        "cornering": [
+          92,
+          98
+        ],
+        "braking": [
+          86,
+          98
+        ],
+        "throttle": [
+          88,
+          98
+        ],
+        "consistency": [
+          55,
+          85
+        ]
+      },
+      "icr2_lap_s": 21.666232,
+      "livery": "res://content/vehicles/open_wheel/liveries/scott_sharpe_2001.png",
+      "pace_reference": {
+        "qualifying_position": 10,
+        "qualifying_time_s": 20.8097,
+        "basis_time_s": 20.8097,
+        "basis": "qualifying"
+      }
+    },
+    {
+      "id": "Hornish",
+      "driver_name": "Sam Hornish Jnr.",
+      "number": "4",
+      "team": "Panther Racing",
+      "colour": "#f0c310",
+      "car_spec": "res://content/car_specs/open_wheel_95.json",
+      "ratings": {
+        "cornering": [
+          92,
+          98
+        ],
+        "braking": [
+          86,
+          98
+        ],
+        "throttle": [
+          88,
+          98
+        ],
+        "consistency": [
+          55,
+          85
+        ]
+      },
+      "icr2_lap_s": 21.2,
+      "livery": "res://content/vehicles/open_wheel/liveries/sam_hornish_2001.png",
+      "pace_reference": {
+        "qualifying_position": 2,
+        "qualifying_time_s": 20.3619,
+        "basis_time_s": 20.3619,
+        "basis": "qualifying"
+      }
+    },
+    {
+      "id": "Lazier",
+      "driver_name": "Buddy Lazier",
+      "number": "91",
+      "team": "Hemelgarn Racing",
+      "colour": "#1e113d",
+      "car_spec": "res://content/car_specs/open_wheel_95.json",
+      "ratings": {
+        "cornering": [
+          92,
+          98
+        ],
+        "braking": [
+          86,
+          98
+        ],
+        "throttle": [
+          88,
+          98
+        ],
+        "consistency": [
+          55,
+          85
+        ]
+      },
+      "icr2_lap_s": 21.548476,
+      "livery": "res://content/vehicles/open_wheel/liveries/buddy_lazier_2001.png",
+      "pace_reference": {
+        "qualifying_position": 6,
+        "qualifying_time_s": 20.6966,
+        "basis_time_s": 20.6966,
+        "basis": "qualifying"
+      }
+    },
+    {
+      "id": "Boat",
+      "driver_name": "Billy Boat",
+      "number": "98",
+      "team": "CURB Records",
+      "colour": "#11275e",
+      "car_spec": "res://content/car_specs/open_wheel_95.json",
+      "ratings": {
+        "cornering": [
+          92,
+          98
+        ],
+        "braking": [
+          86,
+          98
+        ],
+        "throttle": [
+          88,
+          98
+        ],
+        "consistency": [
+          55,
+          85
+        ]
+      },
+      "icr2_lap_s": 21.645512,
+      "livery": "res://content/vehicles/open_wheel/liveries/billy_boat_2001.png",
+      "pace_reference": {
+        "qualifying_position": 7,
+        "qualifying_time_s": 20.7898,
+        "basis_time_s": 20.7898,
+        "basis": "qualifying"
+      }
+    },
+    {
+      "id": "Salazar",
+      "driver_name": "Eliseo Salazar",
+      "number": "14",
+      "team": "Harrah's",
+      "colour": "#3c0c9d",
+      "car_spec": "res://content/car_specs/open_wheel_95.json",
+      "ratings": {
+        "cornering": [
+          92,
+          98
+        ],
+        "braking": [
+          86,
+          98
+        ],
+        "throttle": [
+          88,
+          98
+        ],
+        "consistency": [
+          55,
+          85
+        ]
+      },
+      "icr2_lap_s": 21.713084,
+      "livery": "res://content/vehicles/open_wheel/liveries/eliseo_salazar_2001.png",
+      "pace_reference": {
+        "qualifying_position": 13,
+        "qualifying_time_s": 20.8547,
+        "basis_time_s": 20.8547,
+        "basis": "qualifying"
+      }
+    },
+    {
+      "id": "Giaffone",
+      "driver_name": "Felipe Giaffone",
+      "number": "21",
+      "team": "Hollywood",
+      "colour": "#131434",
+      "car_spec": "res://content/car_specs/open_wheel_95.json",
+      "ratings": {
+        "cornering": [
+          92,
+          98
+        ],
+        "braking": [
+          86,
+          98
+        ],
+        "throttle": [
+          88,
+          98
+        ],
+        "consistency": [
+          55,
+          85
+        ]
+      },
+      "icr2_lap_s": 21.659672,
+      "livery": "res://content/vehicles/open_wheel/liveries/felipe_giaffone_2001.png",
+      "pace_reference": {
+        "qualifying_position": 9,
+        "qualifying_time_s": 20.8034,
+        "basis_time_s": 20.8034,
+        "basis": "qualifying"
+      }
+    },
+    {
+      "id": "Unser",
+      "driver_name": "Al Unser Jr.",
+      "number": "3",
+      "team": "Starz",
+      "colour": "#e7ebe9",
+      "car_spec": "res://content/car_specs/open_wheel_95.json",
+      "ratings": {
+        "cornering": [
+          92,
+          98
+        ],
+        "braking": [
+          86,
+          98
+        ],
+        "throttle": [
+          88,
+          98
+        ],
+        "consistency": [
+          55,
+          85
+        ]
+      },
+      "icr2_lap_s": 22.580995,
+      "livery": "res://content/vehicles/open_wheel/liveries/al_unser_jr_2001.png",
+      "pace_reference": {
+        "qualifying_position": 23,
+        "qualifying_time_s": 21.6883,
+        "basis_time_s": 21.6883,
+        "basis": "qualifying"
+      }
+    },
+    {
+      "id": "Cheever",
+      "driver_name": "Eddie Cheever",
+      "number": "51",
+      "team": "Excite",
+      "colour": "#aab9c1",
+      "car_spec": "res://content/car_specs/open_wheel_95.json",
+      "ratings": {
+        "cornering": [
+          92,
+          98
+        ],
+        "braking": [
+          86,
+          98
+        ],
+        "throttle": [
+          88,
+          98
+        ],
+        "consistency": [
+          55,
+          85
+        ]
+      },
+      "icr2_lap_s": 21.708294,
+      "livery": "res://content/vehicles/open_wheel/liveries/eddie_cheever_2001.png",
+      "pace_reference": {
+        "qualifying_position": 12,
+        "qualifying_time_s": 20.8501,
+        "basis_time_s": 20.8501,
+        "basis": "qualifying"
+      }
+    },
+    {
+      "id": "Calkins",
+      "driver_name": "Buzz Calkins",
+      "number": "12",
+      "team": "Bradley",
+      "colour": "#d71023",
+      "car_spec": "res://content/car_specs/open_wheel_95.json",
+      "ratings": {
+        "cornering": [
+          92,
+          98
+        ],
+        "braking": [
+          86,
+          98
+        ],
+        "throttle": [
+          88,
+          98
+        ],
+        "consistency": [
+          55,
+          85
+        ]
+      },
+      "icr2_lap_s": 21.692781,
+      "livery": "res://content/vehicles/open_wheel/liveries/buzz_calkins_2001.png",
+      "pace_reference": {
+        "qualifying_position": 11,
+        "qualifying_time_s": 20.8352,
+        "basis_time_s": 20.8352,
+        "basis": "qualifying"
+      }
+    },
+    {
+      "id": "Dare",
+      "driver_name": "Airton Dar\u00e9",
+      "number": "88",
+      "team": "Bar None",
+      "colour": "#c6f100",
+      "car_spec": "res://content/car_specs/open_wheel_95.json",
+      "ratings": {
+        "cornering": [
+          92,
+          98
+        ],
+        "braking": [
+          86,
+          98
+        ],
+        "throttle": [
+          88,
+          98
+        ],
+        "consistency": [
+          55,
+          85
+        ]
+      },
+      "icr2_lap_s": 22.09217,
+      "livery": "res://content/vehicles/open_wheel/liveries/airton_dare_2001.png",
+      "pace_reference": {
+        "qualifying_position": 18,
+        "qualifying_time_s": 21.2188,
+        "basis_time_s": 21.2188,
+        "basis": "qualifying"
+      }
+    },
+    {
+      "id": "JeffWard",
+      "driver_name": "Jeff Ward",
+      "number": "35",
+      "team": "Aerosmith / Menards",
+      "colour": "#c21f63",
+      "car_spec": "res://content/car_specs/open_wheel_95.json",
+      "ratings": {
+        "cornering": [
+          92,
+          98
+        ],
+        "braking": [
+          86,
+          98
+        ],
+        "throttle": [
+          88,
+          98
+        ],
+        "consistency": [
+          55,
+          85
+        ]
+      },
+      "icr2_lap_s": 21.331603,
+      "livery": "res://content/vehicles/open_wheel/liveries/jeff_ward_2001.png",
+      "pace_reference": {
+        "qualifying_position": 3,
+        "qualifying_time_s": 20.4883,
+        "basis_time_s": 20.4883,
+        "basis": "qualifying"
+      }
+    },
+    {
+      "id": "Buhl",
+      "driver_name": "Robbie Buhl",
+      "number": "24",
+      "team": "Purex",
+      "colour": "#122767",
+      "car_spec": "res://content/car_specs/open_wheel_95.json",
+      "ratings": {
+        "cornering": [
+          92,
+          98
+        ],
+        "braking": [
+          86,
+          98
+        ],
+        "throttle": [
+          88,
+          98
+        ],
+        "consistency": [
+          55,
+          85
+        ]
+      },
+      "icr2_lap_s": 21.651447,
+      "livery": "res://content/vehicles/open_wheel/liveries/robbie_buhl_2001.png",
+      "pace_reference": {
+        "qualifying_position": 8,
+        "qualifying_time_s": 20.7955,
+        "basis_time_s": 20.7955,
+        "basis": "qualifying"
+      }
+    },
+    {
+      "id": "Hattori",
+      "driver_name": "Shigeaki Hattori",
+      "number": "55",
+      "team": "Epson",
+      "colour": "#142773",
+      "car_spec": "res://content/car_specs/open_wheel_95.json",
+      "ratings": {
+        "cornering": [
+          92,
+          98
+        ],
+        "braking": [
+          86,
+          98
+        ],
+        "throttle": [
+          88,
+          98
+        ],
+        "consistency": [
+          55,
+          85
+        ]
+      },
+      "icr2_lap_s": 22.659498,
+      "livery": "res://content/vehicles/open_wheel/liveries/shigeaki_hattori_2001.png",
+      "pace_reference": {
+        "qualifying_position": 24,
+        "qualifying_time_s": 21.7637,
+        "basis_time_s": 21.7637,
+        "basis": "qualifying"
+      }
+    },
+    {
+      "id": "Dismore",
+      "driver_name": "Mark Dismore",
+      "number": "28",
+      "team": "Delphi",
+      "colour": "#cf1422",
+      "car_spec": "res://content/car_specs/open_wheel_95.json",
+      "ratings": {
+        "cornering": [
+          92,
+          98
+        ],
+        "braking": [
+          86,
+          98
+        ],
+        "throttle": [
+          88,
+          98
+        ],
+        "consistency": [
+          55,
+          85
+        ]
+      },
+      "icr2_lap_s": 21.725474,
+      "livery": "res://content/vehicles/open_wheel/liveries/mark_dismore_2001.png",
+      "pace_reference": {
+        "qualifying_position": 15,
+        "qualifying_time_s": 20.8666,
+        "basis_time_s": 20.8666,
+        "basis": "qualifying"
+      }
+    },
+    {
+      "id": "Beechler",
+      "driver_name": "Donnie Beechler",
+      "number": "84",
+      "team": "Harrah's",
+      "colour": "#20125b",
+      "car_spec": "res://content/car_specs/open_wheel_95.json",
+      "ratings": {
+        "cornering": [
+          92,
+          98
+        ],
+        "braking": [
+          86,
+          98
+        ],
+        "throttle": [
+          88,
+          98
+        ],
+        "consistency": [
+          55,
+          85
+        ]
+      },
+      "icr2_lap_s": 21.713084,
+      "livery": "res://content/vehicles/open_wheel/liveries/donnie_beechler_2001.png",
+      "pace_reference": {
+        "qualifying_position": null,
+        "qualifying_time_s": null,
+        "basis_time_s": 20.8547,
+        "basis": "teammate_proxy",
+        "proxy_driver_id": "Salazar"
+      }
+    },
+    {
+      "id": "McGehee",
+      "driver_name": "Robbie McGehee",
+      "number": "10",
+      "team": "McGehee",
+      "colour": "#0c1413",
+      "car_spec": "res://content/car_specs/open_wheel_95.json",
+      "ratings": {
+        "cornering": [
+          92,
+          98
+        ],
+        "braking": [
+          86,
+          98
+        ],
+        "throttle": [
+          88,
+          98
+        ],
+        "consistency": [
+          55,
+          85
+        ]
+      },
+      "icr2_lap_s": 21.766912,
+      "livery": "res://content/vehicles/open_wheel/liveries/robbie_mcgehee_2001.png",
+      "pace_reference": {
+        "qualifying_position": 16,
+        "qualifying_time_s": 20.9064,
+        "basis_time_s": 20.9064,
+        "basis": "qualifying"
+      }
+    }
+  ],
+  "race_grid": [
+    "Sharpe",
+    "Hornish",
+    "Lazier",
+    "Boat",
+    "Salazar",
+    "Giaffone",
+    "Unser",
+    "Cheever",
+    "Calkins",
+    "Dare",
+    "JeffWard",
+    "Buhl",
+    "Hattori",
+    "Dismore",
+    "Beechler",
+    "McGehee"
+  ],
+  "ai_method": "ICR2",
+  "description": "2001 IRL reference liveries with Phoenix 2001 qualifying-relative AI pace, anchored to a 21.2-second fastest target. Beechler uses a documented Salazar teammate estimate.",
+  "pace_calibration": {
+    "source": "https://en.wikipedia.org/wiki/2001_Pennzoil_Copper_World_Indy_200#Qualifying_classification",
+    "event": "Phoenix, 17 March 2001 qualifying",
+    "method": "icr2_lap_s = 21.2 * qualifying_time_s / 20.3619",
+    "anchor_driver_id": "Hornish",
+    "anchor_target_s": 21.2,
+    "anchor_qualifying_s": 20.3619,
+    "notes": "Preserves qualifying percentage gaps among roster entrants. Greg Ray is not in this roster. Beechler did not qualify at this event: use Salazar as an explicit teammate proxy. These are pace inputs, not guaranteed measured lap times; straight-speed limits, fuel and traffic still apply."
+  }
+}

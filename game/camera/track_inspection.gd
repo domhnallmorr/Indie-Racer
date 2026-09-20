@@ -1,14 +1,16 @@
 extends Camera3D
 ## Exterior and TV cameras. 1/2/3/4: overview/pits/banking/car; T: TV.
 const TV_CAMERA_POSITIONS := [
-	Vector3(65, 11, 158),
-	Vector3(255, 13, 154),
-	Vector3(354, 15, 25),
-	Vector3(150, 11, -158),
-	Vector3(-150, 11, -158),
-	Vector3(-354, 15, -25),
-	Vector3(-255, 13, 154),
-	Vector3(-70, 11, 158),
+	# Straightaway shots look out from the infield across the racing surface.
+	Vector3(65, 11, 85),
+	# Elevated turn shots clear the 12 m sponsor boards, including oblique views.
+	Vector3(255, 40, 154),
+	Vector3(354, 40, 25),
+	Vector3(150, 11, -95),
+	Vector3(-150, 11, -95),
+	Vector3(-354, 40, -25),
+	Vector3(-255, 40, 154),
+	Vector3(-70, 11, 85),
 ]
 const TV_SWITCH_ADVANTAGE_M := 45.0
 
