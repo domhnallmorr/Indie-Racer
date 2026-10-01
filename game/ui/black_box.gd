@@ -19,7 +19,7 @@ func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
 	offset_left = -458
 	offset_right = -18
-	offset_top = -346
+	offset_top = -378
 	offset_bottom = -42
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var style := StyleBoxFlat.new()
@@ -71,7 +71,7 @@ func _ready() -> void:
 	fuel_grid.columns = 2
 	fuel_grid.add_theme_constant_override("v_separation", 6)
 	pages[2].add_child(fuel_grid)
-	for key in ["Remaining", "Tank capacity", "Use / lap", "Est. laps left", "Pit service"]:
+	for key in ["Remaining", "Tank capacity", "Use / lap", "Est. laps left", "Tyres", "Pit service"]:
 		_label(fuel_grid, key + ":", 16, AMBER).size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		fuel_values[key] = _label(fuel_grid, "—", 16)
 		fuel_values[key].horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
@@ -173,7 +173,8 @@ func refresh() -> void:
 	fuel_values["Use / lap"].text = "%.2f gal" % state.fuel_per_lap_gal
 	fuel_values["Est. laps left"].text = "%.1f" % laps_left if laps_left >= 0.0 else "—"
 	fuel_values["Remaining"].modulate = Color(1, 0.35, 0.25) if laps_left >= 0.0 and laps_left < 3.0 else Color.WHITE
-	fuel_values["Pit service"].text = "Refuelling: %.1f s" % state.service_remaining if state.pit_stall_state == state.StallState.SERVICING else ("In pit lane" if state.is_in_pit_lane else "On track")
+	fuel_values["Tyres"].text = "%.1f%%" % (state.tyre_condition*100.0) if racing else "Wear off"
+	fuel_values["Pit service"].text = "Fuel + tyres: %.1f s" % state.service_remaining if state.pit_stall_state == state.StallState.SERVICING else ("In pit lane" if state.is_in_pit_lane else "On track")
 	match active_page:
 		0: footer.text = "Player  •  " + ("Timed lap" if entry.armed else "Cross start/finish to begin timing")
 		1: footer.text = "Positions %d–%d of %d  •  %s" % [first + 1, mini(first + 5, sorted.size()), sorted.size(), "Race order" if racing else "Best lap order"]

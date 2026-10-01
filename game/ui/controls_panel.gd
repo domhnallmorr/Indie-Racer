@@ -4,6 +4,7 @@ var practice: Node
 var shell: Control
 var wheel_host: MarginContainer
 var wheel_panel: PanelContainer
+var menu_wheel: CanvasLayer
 
 func _ready() -> void:
 	size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -41,9 +42,12 @@ func _ready() -> void:
 	call_deferred("_embed_wheel_setup")
 
 func _embed_wheel_setup() -> void:
-	if not is_instance_valid(practice) or not is_instance_valid(practice.player.wheel_input):
+	if is_instance_valid(menu_wheel):
+		wheel_panel = menu_wheel.panel
+	elif is_instance_valid(practice) and is_instance_valid(practice.player.wheel_input):
+		wheel_panel = practice.player.wheel_input.panel
+	else:
 		return
-	wheel_panel = practice.player.wheel_input.panel
 	if not is_instance_valid(wheel_panel):
 		return
 	var old_parent := wheel_panel.get_parent()

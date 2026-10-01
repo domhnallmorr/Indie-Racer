@@ -22,8 +22,39 @@ impulse uses relative closing speed and restitution 0.35; both cars receive the
 response, once per pair per physics tick. Reference AI retain a short lateral
 drift, damped at 4 m/s², while player contacts feed the existing bicycle dynamics.
 Glancing contact preserves forward momentum instead of treating the other car
-as a stationary wall. Solid barriers retain their existing stopping behaviour.
+as a stationary wall. Solid barriers use the rebound response described below.
 This is a forgiving prototype response, without damage or impact-induced spin.
+
+## Wall response and future damage
+
+Wall contacts retain tangential motion, return 25% of the incoming normal speed,
+and apply friction limited to 12% of the normal velocity change. The resolved
+velocity feeds directly back into player and AI dynamics; distance travelled in
+the collision frame must not overwrite it. Separating contacts get no impulse.
+Duplicate coplanar contacts in one tick are resolved once. Floor/ceiling contacts
+do not generate wall impacts. This remains a horizontal prototype without spin.
+
+The outer wall, inner wall and pit separator had inward-facing mesh triangles.
+Their runtime mesh, Blender source and generator now use outward-facing walls,
+so cars collide with the near face rather than entering the wall volume.
+
+Cars emit `wall_impact(impact: Dictionary)` for closing speeds of at least 1 m/s.
+The dictionary contains world-space `position` and `normal`, `collider_id`,
+`physics_frame`, `closing_speed_mps`, `delta_velocity_mps`, `normal_impulse_ns`,
+and `normal_energy_j`. Impulse and energy use configured mass plus current fuel.
+Normal energy is incoming energy into the wall (0.5 × mass × closing speed²),
+not a calibrated damage amount or total energy dissipated. Each resolved inward
+impact can emit; sustained throttle can cause subsequent small impacts.
+
+`last_wall_impact` retains the latest event until reset. `wall_impact_this_step`
+contains the strongest event this tick, or an empty dictionary. The physics
+panel shows the last closing speed and energy; F11 telemetry appends four wall
+impact columns, with zeroes on ticks without an event. Future damage can connect
+to the signal without depending on telemetry or introducing damage thresholds now.
+
+`tools/validate_wall_contacts.gd` exercises glancing, head-on, reverse, gentle
+and separating contacts, subsequent separation, severity data, and real straight
+and banked outer-wall geometry.
 
 Validation scripts:
 

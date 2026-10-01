@@ -548,6 +548,76 @@
         "basis_time_s": 20.9064,
         "basis": "qualifying"
       }
+    },
+    {
+      "id": "JaquesLazier",
+      "driver_name": "Jaques Lazier",
+      "number": "99",
+      "team": "Sam Schmidt Motorsports",
+      "colour": "#ffd313",
+      "car_spec": "res://content/car_specs/open_wheel_95.json",
+      "ratings": {
+        "cornering": [
+          92,
+          98
+        ],
+        "braking": [
+          86,
+          98
+        ],
+        "throttle": [
+          88,
+          98
+        ],
+        "consistency": [
+          55,
+          85
+        ]
+      },
+      "icr2_lap_s": 21.097133,
+      "livery": "res://content/vehicles/open_wheel/liveries/jaques_lazier_2001.png",
+      "pace_reference": {
+        "qualifying_position": null,
+        "qualifying_time_s": null,
+        "basis_time_s": 20.2631,
+        "basis": "retained_estimate",
+        "proxy_driver_id": "GregRay",
+        "notes": "Previous pace estimate retained after changing to the supplied #99 livery; not a Phoenix qualifying result for Jaques."
+      }
+    },
+    {
+      "id": "GregRay",
+      "driver_name": "Greg Ray",
+      "number": "2",
+      "team": "Team Menard",
+      "colour": "#0f1441",
+      "car_spec": "res://content/car_specs/open_wheel_95.json",
+      "ratings": {
+        "cornering": [
+          92,
+          98
+        ],
+        "braking": [
+          86,
+          98
+        ],
+        "throttle": [
+          88,
+          98
+        ],
+        "consistency": [
+          55,
+          85
+        ]
+      },
+      "icr2_lap_s": 21.097133,
+      "livery": "res://content/vehicles/open_wheel/liveries/greg_ray_2001.png",
+      "pace_reference": {
+        "qualifying_position": 1,
+        "qualifying_time_s": 20.2631,
+        "basis_time_s": 20.2631,
+        "basis": "qualifying"
+      }
     }
   ],
   "race_grid": [
@@ -566,10 +636,12 @@
     "Hattori",
     "Dismore",
     "Beechler",
-    "McGehee"
+    "McGehee",
+    "JaquesLazier",
+    "GregRay"
   ],
   "ai_method": "ICR2",
-  "description": "2001 IRL reference liveries with Phoenix 2001 qualifying-relative AI pace, anchored to a 21.2-second fastest target. Beechler uses a documented Salazar teammate estimate.",
+  "description": "2001 IRL reference liveries with Phoenix 2001 qualifying-relative AI pace, anchored to a 21.2-second Hornish target. Beechler uses a Salazar estimate; Jaques Lazier retains his previous provisional pace estimate.",
   "pace_calibration": {
     "source": "https://en.wikipedia.org/wiki/2001_Pennzoil_Copper_World_Indy_200#Qualifying_classification",
     "event": "Phoenix, 17 March 2001 qualifying",
@@ -577,6 +649,6 @@
     "anchor_driver_id": "Hornish",
     "anchor_target_s": 21.2,
     "anchor_qualifying_s": 20.3619,
-    "notes": "Preserves qualifying percentage gaps among roster entrants. Greg Ray is not in this roster. Beechler did not qualify at this event: use Salazar as an explicit teammate proxy. These are pace inputs, not guaranteed measured lap times; straight-speed limits, fuel and traffic still apply."
+    "notes": "Preserves qualifying percentage gaps among roster entrants. Jaques Lazier uses Greg Ray\u2019s #2 Team Menard result as a retained provisional estimate, not a same-team comparison for his #99. Beechler did not qualify at this event: use Salazar as an explicit teammate proxy. These are pace inputs, not guaranteed measured lap times; straight-speed limits, fuel and traffic still apply."
   }
 }

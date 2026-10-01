@@ -10,6 +10,8 @@ var candidate: Dictionary = {}
 var origins: Dictionary = {}
 var samples: Array[float] = []
 var player: Node
+var menu_mode := false
+var close_callback: Callable
 
 func _ready() -> void:
 	layer = 20
@@ -24,9 +26,13 @@ func _ready() -> void:
 	panel.add_child(box)
 	var title := Label.new()
 	title.text = "Wheel setup — F10 to close"
+	if menu_mode:
+		title.text = "Wheel & pedal setup"
 	box.add_child(title)
 	var notice := Label.new()
 	notice.text = "CAR HELD ON BRAKES WHILE SETUP IS OPEN\nValues below preview inputs. Enable controls, then close to drive."
+	if menu_mode:
+		notice.text = "Calibrate your controls below. Settings are saved automatically and used in game."
 	notice.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	box.add_child(notice)
 	enabled = CheckButton.new()
@@ -49,6 +55,8 @@ func _ready() -> void:
 	box.add_child(clear)
 	var close := Button.new()
 	close.text = "Close setup and return to driving (F10)"
+	if menu_mode:
+		close.text = "Back to main menu"
 	close.pressed.connect(_close_setup)
 	box.add_child(close)
 	status = Label.new()
@@ -58,6 +66,9 @@ func _ready() -> void:
 
 func _close_setup() -> void:
 	capture = ""
+	if close_callback.is_valid():
+		close_callback.call()
+		return
 	var race_ui = player.get_parent().get_node_or_null("HUD/RaceUI") if is_instance_valid(player) else null
 	if race_ui != null:
 		race_ui.close_shell()
@@ -87,7 +98,7 @@ func _begin(control: String) -> void:
 			origins[Vector2i(device, axis)] = Input.get_joy_axis(device, axis)
 
 func _input(event: InputEvent) -> void:
-	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_F10:
+	if not menu_mode and event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_F10:
 		capture = ""
 		var race_ui = player.get_parent().get_node_or_null("HUD/RaceUI") if is_instance_valid(player) else null
 		if race_ui != null:
@@ -104,7 +115,7 @@ func _input(event: InputEvent) -> void:
 			bindings[capture] = {"guid": Input.get_joy_guid(event.device), "name": Input.get_joy_name(event.device), "button": event.button_index}
 			capture = ""
 			_save()
-		if event is InputEventKey or event is InputEventJoypadButton or event is InputEventJoypadMotion:
+		if (not menu_mode or not capture.is_empty()) and (event is InputEventJoypadButton or event is InputEventJoypadMotion) or (not menu_mode and event is InputEventKey):
 			get_viewport().set_input_as_handled()
 	elif enabled.button_pressed and event is InputEventJoypadButton and event.pressed and is_instance_valid(player):
 		if not player.driving_enabled or player.player_state.pit_stall_state == player.player_state.StallState.STOPPED:
@@ -178,4 +189,7 @@ func _process(_delta: float) -> void:
 			status.text += "\n" + steps[samples.size()] + ", then click Capture."
 			status.text += "\nSelected: " + str(candidate.get("name", "move the desired axis"))
 	else:
-		status.text += "\nCalibrate each axis, then enable. Practice continues while setup is open.\nPlayer throttle is cut and brakes applied during setup."
+		if menu_mode:
+			status.text += "\nCalibrate each axis, then enable. Settings are saved automatically."
+		else:
+			status.text += "\nCalibrate each axis, then enable. Practice continues while setup is open.\nPlayer throttle is cut and brakes applied during setup."

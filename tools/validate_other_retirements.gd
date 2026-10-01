@@ -25,6 +25,10 @@ func run() -> void:
 		var car = main.ai_cars[0]
 		var driver = car.get_node("Driver")
 		var plan = driver.race_plan
+		# Check the entire loop, including both banked turns and straights.
+		for point_index in range(driver.race.size()):
+			var apron_point: Vector3 = driver._inside_return_point(point_index)
+			check(absf(apron_offset(apron_point)+13.0)<.1,scenario+": return line centred on apron")
 		var rival = main.ai_cars[1].get_node("Driver")
 		rival.race_plan.failure_progress = INF
 		var at_index: int = driver.race.size()/2
@@ -44,6 +48,10 @@ func run() -> void:
 		var start: Vector3 = car.global_position
 		driver._physics_process(1.0/60)
 		check(plan.returning and not plan.retired,scenario+": scheduled failure starts return before retirement")
+		for route_index in range(driver.route.size()):
+			if driver.route_distances[route_index] > 160.0:
+				# Include the pit-entry blend: leave clearance for the car's width.
+				check(apron_offset(driver.route[route_index]) < -11.5,scenario+": stays entirely below white line through pit entry")
 		check(car.global_position.distance_to(start)<2.0,scenario+": no teleport on failure")
 		check(car.player_state.engine_running and plan.smoke == null,scenario+": engine remains on, no smoke")
 		main.get_node("InspectionCamera").followed_ai = 0
@@ -73,8 +81,7 @@ func run() -> void:
 			if car.player_state.is_in_pit_speed_zone and car.speed_mps > main.track_data.speed_limit_kph/3.6+.05:
 				speed_violations += 1
 			if not checked_inside and plan.return_distance > 160 and plan.return_distance < driver.pit_entry_lane_distance-150 and driver.racecraft.enabled:
-				var coordinates: Vector2 = driver.racecraft.coordinates(driver,car)
-				check(absf(coordinates.y+6.5)<.3,scenario+": follows inside line")
+				check(absf(apron_offset(car.track.to_local(car.global_position))+13.0)<.3,scenario+": follows apron line")
 				checked_inside = true
 			if scenario == "after_entry" and tick == 180:
 				main.race_control.call_caution("Unrelated incident")
@@ -111,3 +118,7 @@ func run() -> void:
 		main.free()
 	print("OTHER RETIREMENTS ","PASSED" if failures.is_empty() else failures)
 	quit(0 if failures.is_empty() else 1)
+
+func apron_offset(point: Vector3) -> float:
+	var half_straight := (1609.344-2.0*PI*125.0)/4.0
+	return Vector2(point.x-clampf(point.x,-half_straight,half_straight),point.z).length()-125.0

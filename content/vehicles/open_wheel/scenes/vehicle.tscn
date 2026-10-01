@@ -1,9 +1,10 @@
-[gd_scene load_steps=5 format=3]
+[gd_scene load_steps=6 format=3]
 
 [ext_resource type="PackedScene" path="res://content/vehicles/open_wheel/models/open_wheel.glb" id="1"]
 [ext_resource type="Script" path="res://game/vehicle/basic_car.gd" id="2"]
 
 [ext_resource type="Script" path="res://game/vehicle/engine_audio.gd" id="3_audio"]
+[ext_resource type="Script" path="res://game/vehicle/wheel_visuals.gd" id="4_wheels"]
 
 [sub_resource type="BoxShape3D" id="BodyShape"]
 size = Vector3(1.85, 0.64, 4.35)
@@ -18,10 +19,13 @@ position = Vector3(0, 0.32, 0.06)
 shape = SubResource("BodyShape")
 
 [node name="Visual" parent="." instance=ExtResource("1")]
-metadata/tyre_contacts = PackedVector3Array(-0.715, 0, -1.242882, -0.823, 0, 1.757118, 0.715, 0, -1.242882, 0.823, 0, 1.757118)
+metadata/tyre_contacts = PackedVector3Array(-0.715, 0, -1.342882, -0.823, 0, 1.757118, 0.715, 0, -1.342882, 0.823, 0, 1.757118)
 metadata/cockpit_offset = Vector3(0, -0.13, -0.217)
 metadata/dashboard_width_scale = 0.72
 metadata/dashboard_rearward_offset = 0.10
 
-[node name="EngineAudio" type="AudioStreamPlayer3D" parent="."]
+[node name="EngineAudio" type="Node3D" parent="."]
 script = ExtResource("3_audio")
+
+[node name="WheelVisuals" type="Node" parent="."]
+script = ExtResource("4_wheels")

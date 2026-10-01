@@ -5,6 +5,8 @@ func _initialize() -> void:
 
 func validate() -> void:
 	var main = load("res://game/main/main.tscn").instantiate()
+	# This validates the grip/braking planner, not the default ICR2 speed profile.
+	main.roster_file = "res://content/rosters/default/manifest.json"
 	root.add_child(main)
 	var car = main.ai_cars[0]
 	var driver = car.get_node("Driver")
@@ -46,6 +48,7 @@ func validate() -> void:
 	assert(driver._corner_speed(a,b,c) > baseline, "Helpful banking must increase corner capacity")
 	driver.surface_normals.clear()
 	# A distant bend must be visible even with more than 80 intervening points.
+	driver.racecraft.enabled = false # The synthetic route has no authored corridor.
 	driver.mode = driver.Mode.RACING
 	driver.race.clear()
 	for i in range(701):

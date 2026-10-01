@@ -1,26 +1,36 @@
 extends Control
 
 ## Front-end flow for selecting a weekend and launching an existing session.
-enum Screen { MAIN, SETUP, WEEKEND }
+enum Screen { MAIN, SETUP, WEEKEND, OPTIONS }
 
 const GAME_SCENE := "res://game/main/main.tscn"
 const DEFAULT_LAPS := 10
+const DEFAULT_ROSTER := "res://content/rosters/irl_2001/manifest.json"
+const RosterData = preload("res://game/race/roster_data.gd")
 
 @onready var main_screen: Control = $Center/MainMenu
 @onready var setup_screen: Control = $Center/WeekendSetup
 @onready var weekend_screen: Control = $Center/WeekendMenu
 @onready var track_select: OptionButton = $Center/WeekendSetup/Panel/Margin/Layout/TrackSelect
+@onready var roster_select: OptionButton = $Center/WeekendSetup/Panel/Margin/Layout/RosterSelect
 @onready var laps_select: SpinBox = $Center/WeekendSetup/Panel/Margin/Layout/LapsSelect
 @onready var fuel_select: SpinBox = $Center/WeekendSetup/Panel/Margin/Layout/FuelSelect
 @onready var race_summary: Label = $Center/WeekendMenu/Panel/Margin/Layout/Summary
 
 var current_screen := Screen.MAIN
 var selected_track_name := "Mile Oval"
+var options_wheel: CanvasLayer
 
 func _ready() -> void:
+	options_wheel = preload("res://game/input/wheel_input.gd").new()
+	options_wheel.menu_mode = true
+	options_wheel.close_callback = _on_options_back_pressed
+	add_child(options_wheel)
+	$Options/Layout/ControlsPanel.menu_wheel = options_wheel
 	_populate_tracks()
 	laps_select.value = DEFAULT_LAPS
 	var selection: Dictionary = get_tree().root.get_meta("roster_selection", {})
+	_populate_rosters(str(selection.get("file", DEFAULT_ROSTER)))
 	if get_tree().root.get_meta("return_to_weekend", false):
 		get_tree().root.set_meta("return_to_weekend", false)
 		laps_select.value = selection.get("race_laps", DEFAULT_LAPS)
@@ -38,22 +48,51 @@ func _populate_tracks() -> void:
 		var track: Dictionary = ContentCatalog.tracks[track_id]
 		if track.get("available", false):
 			track_select.add_item(str(track.get("display_name", track_id)))
+			track_select.set_item_metadata(track_select.item_count-1,track_id)
 	if track_select.item_count == 0:
 		track_select.add_item(selected_track_name)
 	track_select.select(0)
-	selected_track_name = track_select.get_item_text(0)
+	var saved_track: String = get_tree().root.get_meta("roster_selection",{}).get("track_id","mile_oval")
+	for i in range(track_select.item_count):
+		if track_select.get_item_metadata(i) == saved_track:
+			track_select.select(i)
+	selected_track_name = track_select.get_item_text(track_select.selected)
+
+func _populate_rosters(selected_path: String) -> void:
+	roster_select.clear()
+	for path in RosterData.discover():
+		var data: Dictionary = RosterData.new().read_json(path)
+		if data.is_empty():
+			continue
+		roster_select.add_item(str(data.get("display_name", path.get_base_dir().get_file())))
+		roster_select.set_item_metadata(roster_select.item_count - 1, path)
+	for path in [DEFAULT_ROSTER, selected_path]:
+		for index in range(roster_select.item_count):
+			if roster_select.get_item_metadata(index) == path:
+				roster_select.select(index)
+	roster_select.disabled = roster_select.item_count == 0
+	$Center/WeekendSetup/Panel/Margin/Layout/Continue.disabled = roster_select.disabled
 
 func _show_screen(screen: Screen) -> void:
 	current_screen = screen
 	main_screen.visible = screen == Screen.MAIN
 	setup_screen.visible = screen == Screen.SETUP
 	weekend_screen.visible = screen == Screen.WEEKEND
+	$Options.visible = screen == Screen.OPTIONS
+	$Title.visible = screen != Screen.OPTIONS
+	$Subtitle.visible = screen != Screen.OPTIONS
+	$Center.offset_top = 160.0 if screen == Screen.SETUP else 48.0
+	options_wheel.capture = ""
 	if screen == Screen.MAIN:
 		$Center/MainMenu/Panel/Margin/Layout/RaceWeekend.grab_focus()
 	elif screen == Screen.SETUP:
 		track_select.grab_focus()
+	elif screen == Screen.OPTIONS:
+		$Options/Layout/Back.grab_focus()
 	else:
 		race_summary.text = "%s  •  %d laps  •  %d gal tank" % [selected_track_name, int(laps_select.value),int(fuel_select.value)]
+		if roster_select.selected >= 0:
+			race_summary.text += "\n" + roster_select.get_item_text(roster_select.selected)
 		var results: Array = get_tree().root.get_meta("roster_selection", {}).get("qualifying_results", [])
 		var result_label: Label = $Center/WeekendMenu/Panel/Margin/Layout/ResultsScroll/Results
 		result_label.text = "QUALIFYING RESULTS\n"
@@ -69,8 +108,18 @@ func _show_screen(screen: Screen) -> void:
 func _on_race_weekend_pressed() -> void:
 	_show_screen(Screen.SETUP)
 
+func _on_options_pressed() -> void:
+	_show_screen(Screen.OPTIONS)
+
+func _on_options_back_pressed() -> void:
+	_show_screen(Screen.MAIN)
+	$Center/MainMenu/Panel/Margin/Layout/Options.grab_focus()
+
 func _on_setup_continue_pressed() -> void:
-	get_tree().root.set_meta("roster_selection", {})
+	if roster_select.selected < 0:
+		return
+	get_tree().root.set_meta("roster_selection", {"file": roster_select.get_item_metadata(roster_select.selected),
+		"track_id":track_select.get_item_metadata(track_select.selected)})
 	selected_track_name = track_select.get_item_text(track_select.selected)
 	_show_screen(Screen.WEEKEND)
 
@@ -83,6 +132,8 @@ func _on_weekend_back_pressed() -> void:
 func _on_start_session(mode: String) -> void:
 	var selection: Dictionary = get_tree().root.get_meta("roster_selection", {}).duplicate(true)
 	selection.merge({
+		"file": roster_select.get_item_metadata(roster_select.selected),
+		"track_id":track_select.get_item_metadata(track_select.selected),
 		"session_mode": mode,
 		"race_laps": int(laps_select.value),
 		"max_fuel_capacity_gal": float(fuel_select.value),
@@ -105,7 +156,15 @@ func _on_race_pressed() -> void:
 func _on_quit_pressed() -> void:
 	get_tree().quit()
 
+func _input(event: InputEvent) -> void:
+	if event.is_action_pressed("ui_cancel") and current_screen == Screen.OPTIONS:
+		_on_options_back_pressed()
+		get_viewport().set_input_as_handled()
+
 func _unhandled_key_input(event: InputEvent) -> void:
 	if event.is_action_pressed("ui_cancel") and current_screen != Screen.MAIN:
-		_show_screen(Screen.SETUP if current_screen == Screen.WEEKEND else Screen.MAIN)
+		if current_screen == Screen.OPTIONS:
+			_on_options_back_pressed()
+		else:
+			_show_screen(Screen.SETUP if current_screen == Screen.WEEKEND else Screen.MAIN)
 		get_viewport().set_input_as_handled()

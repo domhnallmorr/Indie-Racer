@@ -7,5 +7,5 @@
   "scene": "scenes/vehicle.tscn",
   "units": "metres",
   "visual_only": false,
-  "wheelbase_m": 3.0
+  "wheelbase_m": 3.1
 }

@@ -6,4 +6,6 @@ The silver, four-door early-2000s saloon is built from native Godot meshes in co
 
 The field holds its existing two-wide 80 km/h formation. Green requires both the pole sitter reaching the configured green zone and the pace car clearing the track. The pace car is excluded from timing and race positions. During [full-course cautions](cautions.md), it redeploys along the pit exit, picks up the leader and circulates until Race Control calls it in. Caution restarts use single file.
 
-Validation: tools/validate_pace_car.gd covers capacity, bay separation, pace-car gap, pull-away, limiter, green interlock and parking. Run headless with --fixed-fps 120. tools/capture_pace_car.gd renders builds/pace_car_bay.png.
+The render model fits its roll, pitch and vertical offset to road samples at all four tyre contacts. This keeps both sides grounded on banking and through the flat/banked transitions during formation, caution circulation, deployment and pit return. Racing car bodies are excluded from the road samples. Route position, pace, and race-control progress are unchanged.
+
+Validation: tools/validate_pace_car.gd covers capacity, bay separation, pace-car gap, pull-away, limiter, green interlock and parking. Run headless with --fixed-fps 120. tools/capture_pace_car.gd renders builds/pace_car_bay.png. tools/validate_pace_grounding.gd checks tyre clearance around the full oval, formation/return route, pit deployment and final bay, including rejection of racing cars as support surfaces. Add -- --capture in a rendered run to save builds/pace_car_banking.png.

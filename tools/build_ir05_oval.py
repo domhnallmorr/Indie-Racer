@@ -35,11 +35,19 @@ def point(v):
 front_y=point((0,FRONT_RAW,0)).y
 rear_y=point((0,REAR_RAW,0)).y
 NOSE_SHORTEN_M=.225
+FRONT_WHEEL_FORWARD_M=.10
 # Explicit mapping is tied to the archived source file, sorted by component size.
 road_wings={3,4,11,12,16,21,22,23,24,27,28,29,38,39,66,67}
 old_wheels={5,6,7,8,34,35,36,37,41,42,43,44,50,51,52,53,55,56,57,58}
 paint_ids={1,15,40,45,46,47,61}
 helmet_ids={0,14}
+HELMET_SCALE=1.15
+# Scale shell and visor about one shared neck/base pivot to retain their fit.
+helmet_points=[point(v.co) for v in parts[0].data.vertices]
+helmet_low=Vector(tuple(min(v[i] for v in helmet_points) for i in range(3)))
+helmet_high=Vector(tuple(max(v[i] for v in helmet_points) for i in range(3)))
+helmet_pivot=(helmet_low+helmet_high)*.5
+helmet_pivot.z=helmet_low.z
 driver_ids={9,10,49}
 dash_ids={2,19,20,54,65,69,70,73,74,*range(78,97),98,99,102,103}
 mirror_ids={40,46,68,100,101}
@@ -50,6 +58,8 @@ for i,obj in enumerate(parts):
         continue
     for v in obj.data.vertices:
         v.co=point(v.co)
+        if i in helmet_ids:
+            v.co=helmet_pivot+(v.co-helmet_pivot)*HELMET_SCALE
         # Compress only the body ahead of the front axle; keep chassis and suspension fixed.
         if i==1 and v.co.y>front_y:
             v.co.y-=NOSE_SHORTEN_M*(v.co.y-front_y)/(2.5-front_y)
@@ -86,8 +96,8 @@ for face in body.data.polygons:
 
 # Reuse the existing high-resolution, hub-centred wheels, fitted to the source track.
 wheel_code=shared.split('# Rounded slick shoulder profile, recessed twelve-spoke magnesium rims and brakes.')[1].split('# One globally packed UV atlas')[0]
-# Each new wheel preserves the source hub position; front track is narrower than rear.
-wheel_code=wheel_code.replace("('Front',1.5,.325,.30,.845),('Rear',-1.5,.35,.39,.805)","('Front',front_y,.327,.348,.715),('Rear',rear_y,.327,.348,.823)")
+# Bring the front hubs forward to meet the source suspension; keep the body datum fixed.
+wheel_code=wheel_code.replace("('Front',1.5,.325,.30,.845),('Rear',-1.5,.35,.39,.805)","('Front',front_y+FRONT_WHEEL_FORWARD_M,.327,.348,.715),('Rear',rear_y,.327,.348,.823)")
 # Suspension already exists in the STL; only generate wheel and rim geometry.
 wheel_code=wheel_code.split('        for height in')[0]
 exec(compile(wheel_code,'<shared wheel geometry>','exec'))
@@ -117,12 +127,13 @@ tail='# One globally packed UV atlas'+tail
 tail=tail.replace("assert abs(dims[1]-5.0)<.015,dims","assert abs(dims[1]-(5.0-NOSE_SHORTEN_M))<.015,dims")
 # Imported parts lack a source shader multiply node; this section creates it as usual.
 tail=tail.replace("assert abs(dims[0]-2.0)<.015,dims","assert abs(dims[0]-2.0)<.015,dims")
-tail=tail.replace("assert abs(bpy.data.objects['WheelFrontLeft'].location.y-bpy.data.objects['WheelRearLeft'].location.y-3.0)<1e-6","assert abs(bpy.data.objects['WheelFrontLeft'].location.y-bpy.data.objects['WheelRearLeft'].location.y-3.0)<1e-6")
+tail=tail.replace("location.y-3.0)<1e-6","location.y-(3.0+FRONT_WHEEL_FORWARD_M))<1e-6")
 # Header helper used to assemble source-based geometry; source archive remains untouched.
 tail=tail.replace("'diffuser_rise_m':.09","'source':'ccjr / Dallara IR-05 / Cults3D 346481','body_source_vertices':body_vertices,'body_source_triangles':body_triangles,'front_wing_span_m':1.62,'front_wing_chord_m':.32,'rear_wing_span_m':1.08,'rear_wing_chord_m':.36")
 # Save working model separately from the rejected generic model.
 tail=tail.replace("SOURCE/'open_wheel.blend'","SOURCE/'ir05_oval.blend'")
-tail=tail.replace("'wheelbase_m':3.0","'wheelbase_m':3.0,'nose_shortened_m':NOSE_SHORTEN_M,'nose_overhang_m':2.5-NOSE_SHORTEN_M-front_y")
+tail=tail.replace("'wheelbase_m':3.0","'wheelbase_m':3.0+FRONT_WHEEL_FORWARD_M,'front_wheel_forward_m':FRONT_WHEEL_FORWARD_M,'nose_shortened_m':NOSE_SHORTEN_M,'nose_overhang_m':2.5-NOSE_SHORTEN_M-front_y-FRONT_WHEEL_FORWARD_M")
+tail=tail.replace('3 m wheelbase','3.1 m wheelbase')
 exec(compile(tail,'<shared UV export and preview>','exec'))
 # Neutral review images let the source silhouette and wing changes speak for themselves.
 scene.render.engine='BLENDER_WORKBENCH'

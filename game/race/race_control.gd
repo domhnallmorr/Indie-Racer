@@ -151,7 +151,7 @@ func _physics_process(delta: float) -> void:
 
 func _in_green_zone() -> bool:
 	var p: Vector3 = main.get_node("MileOval").to_local(queue[0].global_position)
-	return p.x >= main.track_data.green_point.x and p.z > 100.0
+	return main.track_data.in_green_zone(p)
 
 func _ai_pitting() -> bool:
 	for car in main.ai_cars:

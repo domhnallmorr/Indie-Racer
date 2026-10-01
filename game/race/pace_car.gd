@@ -27,6 +27,7 @@ func configure(track_node: Node3D, data, pole: Node3D, race: bool) -> void:
 	model = preload("res://content/vehicles/pace_car/pace_car_model.gd").new()
 	add_child(model)
 	global_transform = track.global_transform*data.pace_car_box
+	call_deferred("_update_visual_grounding")
 	_add_bay_label()
 	if not race:
 		return
@@ -41,11 +42,13 @@ func _build_route(from_current: bool = false) -> void:
 	progress = 0.0
 	pull_away_distance = 0.0
 	pit_distance = 0.0
-	var paths: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://content/tracks/mile_oval/ai/reference_paths.json"))
+	var paths: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(track_data.reference_paths_file))
 	var points: Array = paths.reference_path
 	var start := 0
 	var nearest_pit := 0
 	var start_position: Vector3 = track_data.grid_origin+Vector3(-25,0,0)
+	if track_data.path_based_pits:
+		start_position = track_data.grid_origin-track_data.grid_transform(0).basis.z*25
 	if from_current:
 		start_position = track.to_local(global_position)
 	var pit: PackedVector3Array = track_data.pit_path
@@ -65,6 +68,8 @@ func _build_route(from_current: bool = false) -> void:
 		if cursor == join:
 			break
 		cursor = (cursor+1)%(points.size()-1)
+	if track_data.path_based_pits:
+		pull_away_distance = maxf(0.0,route.get_baked_length()-300.0)
 	var a := route.get_point_position(route.point_count-1)
 	var tangent := (_point(points[(join+1)%(points.size()-1)])-a).normalized()
 	var end_tangent := (pit[1]-pit[0]).normalized()
@@ -74,8 +79,10 @@ func _build_route(from_current: bool = false) -> void:
 		route.add_point((2*t*t*t-3*t*t+1)*a+(t*t*t-2*t*t+t)*tangent*span+(-2*t*t*t+3*t*t)*pit[0]+(t*t*t-t*t)*end_tangent*span)
 	pit_distance = route.get_baked_length()
 	var box: Vector3 = track_data.pace_car_box.origin
-	for p in pit:
-		if p.x >= box.x-35.0:
+	var stall_index: int = track_data.pit_approach_index(box) if track_data.path_based_pits else -1
+	for pit_index in range(pit.size()):
+		var p := pit[pit_index]
+		if (track_data.path_based_pits and pit_index >= stall_index) or (not track_data.path_based_pits and p.x >= box.x-35.0):
 			break
 		if p.distance_to(route.get_point_position(route.point_count-1)) > .1:
 			route.add_point(p)
@@ -117,12 +124,44 @@ func _physics_process(delta: float) -> void:
 		phase = Phase.PARKED
 		speed_mps = 0.0
 		global_transform = track.global_transform*track_data.pace_car_box
+		_update_visual_grounding()
 
 func _place() -> void:
 	var p := route.sample_baked(progress)
 	var ahead := route.sample_baked(minf(progress+1.0,route.get_baked_length()))
 	if ahead.distance_to(p) > .001:
 		global_transform = track.global_transform*Transform3D(Basis.looking_at((ahead-p).normalized()),p)
+	_update_visual_grounding()
+
+func _update_visual_grounding() -> void:
+	# Route tangents supply heading/pitch but no banking. Fit the render model
+	# to the road under all four tyres without changing pace-car route progress.
+	var contacts: Array = model.TYRE_CONTACTS
+	var points := PackedVector3Array()
+	var space := get_world_3d().direct_space_state
+	for contact in contacts:
+		var at := to_global(contact)
+		var query := PhysicsRayQueryParameters3D.create(at+Vector3.UP*3.0,at-Vector3.UP*6.0,1)
+		var hit := space.intersect_ray(query)
+		while not hit.is_empty() and hit.collider is CharacterBody3D:
+			var excluded := query.exclude
+			excluded.append(hit.rid)
+			query.exclude = excluded
+			hit = space.intersect_ray(query)
+		if hit.is_empty() or hit.normal.dot(Vector3.UP) < .65:
+			return
+		points.append(to_local(hit.position))
+	var across := (points[2]+points[3]-points[0]-points[1])*.5
+	var rearward := (points[1]+points[3]-points[0]-points[2])*.5
+	var normal := rearward.cross(across).normalized()
+	if normal.y < .65:
+		return
+	var right := normal.cross(Vector3.BACK).normalized()
+	model.basis = Basis(right,normal,right.cross(normal)).orthonormalized()
+	var lift := -INF
+	for i in range(contacts.size()):
+		lift = maxf(lift,points[i].y-(model.basis*contacts[i]).y)
+	model.position.y = lift+.003
 
 func deploy_caution(pole: Node3D, circuit: Curve3D) -> void:
 	leader = pole
@@ -195,6 +234,7 @@ func _place_on(path: Curve3D, at: float, loop: bool) -> void:
 	var ahead := path.sample_baked(next)
 	if ahead.distance_to(p) > .001:
 		global_transform = track.global_transform*Transform3D(Basis.looking_at((ahead-p).normalized()),p+Vector3(0,.025 if loop else 0.0,0))
+	_update_visual_grounding()
 
 func return_from_caution() -> void:
 	if phase == Phase.PARKED or phase == Phase.PIT_ENTRY:

@@ -131,12 +131,26 @@ func _build_departure() -> void:
 	merge_committed = false
 	merge_blocker = ""
 	var start: Vector3 = car.track.to_local(car.global_position)
-	# Leave the stall gradually towards the travel lane, clear of parked boxes.
-	for i in range(21):
-		var t := i / 20.0
-		var blend := t*t*(3-2*t)
-		route.append(Vector3(start.x+36*t,.008,lerpf(start.z,101.0,blend)))
 	var pit: PackedVector3Array = car.track_data.pit_path
+	# Leave the stall gradually towards the travel lane, clear of parked boxes.
+	if car.track_data.path_based_pits:
+		var join_index: int = mini(car.track_data.nearest_pit_index(start),pit.size()-2)
+		var travelled := 0.0
+		while join_index < pit.size()-2 and travelled < 36:
+			travelled += pit[join_index].distance_to(pit[join_index+1])
+			join_index += 1
+		var finish := pit[join_index]
+		var heading := (pit[join_index+1]-finish).normalized()
+		var span := start.distance_to(finish)
+		var forward: Vector3 = car.track.global_basis.inverse()*(-car.global_basis.z)
+		for i in range(21):
+			var t := i/20.0
+			route.append((2*t*t*t-3*t*t+1)*start+(t*t*t-2*t*t+t)*forward*span+(-2*t*t*t+3*t*t)*finish+(t*t*t-t*t)*heading*span)
+	else:
+		for i in range(21):
+			var t := i / 20.0
+			var blend := t*t*(3-2*t)
+			route.append(Vector3(start.x+36*t,.008,lerpf(start.z,101.0,blend)))
 	var nearest := 0
 	for i in range(pit.size()):
 		if pit[i].distance_squared_to(route[-1]) < pit[nearest].distance_squared_to(route[-1]):
@@ -289,7 +303,7 @@ func _pit_exit_speed() -> float:
 func _planned_speed() -> float:
 	var p: Dictionary = car.parameters.values
 	var result := INF
-	var decel: float = maxf(0.1, minf(p.brake_force_n/p.mass_kg,p.friction_coefficient*9.81)*(pit_braking_utilisation if mode == Mode.PIT_EXIT else braking_utilisation))
+	var decel: float = maxf(0.1, minf(p.brake_force_n/p.mass_kg,p.friction_coefficient*car.player_state.tyre_grip_multiplier()*9.81)*(pit_braking_utilisation if mode == Mode.PIT_EXIT else braking_utilisation))
 	# Include acceleration/control response before the next planning update.
 	var speed: float = absf(car.speed_mps)
 	var position: Vector3 = car.track.to_local(car.global_position)
@@ -348,7 +362,7 @@ func _corner_speed(a: Vector3, b: Vector3, c: Vector3) -> float:
 	# Reserve capacity before a lane change, including the return to the groove.
 	if mode == Mode.RACING and racecraft.enabled and maxf(absf(racecraft.lane),absf(racecraft.target_lane)) > .01:
 		utilisation = minf(utilisation,.92)
-	var grip: float = p.friction_coefficient*p.corner_grip_fraction*utilisation
+	var grip: float = p.friction_coefficient*p.corner_grip_fraction*utilisation*car.player_state.tyre_grip_multiplier()
 	var aero: float = .5*p.air_density_kg_m3*p.downforce_area_m2/p.mass_kg
 	var gravity: Vector3 = car.track.global_basis.inverse()*(Vector3.DOWN*9.81)
 	var available := maxf(0.0,grip*maxf(0,-gravity.dot(normal))+gravity.dot(lateral/bend))
@@ -477,6 +491,8 @@ func _merge_clear() -> bool:
 		merge_blocker = "caution_queue"
 		return false
 	var position: Vector3 = car.track.to_local(car.global_position)
+	if car.track_data.path_based_pits:
+		return _path_merge_clear(position)
 	for other in rivals:
 		if other == car or other.get_meta("retired",false):
 			continue
@@ -513,6 +529,48 @@ func _merge_clear() -> bool:
 			return false
 	return true
 
+func _path_merge_clear(position: Vector3) -> bool:
+	var end := route[-1]
+	var heading := (race[(route_join_index+1)%race.size()]-race[route_join_index]).normalized()
+	heading.y = 0.0
+	heading = heading.normalized()
+	var speed := maxf(20.0,car.speed_mps)
+	var right := heading.cross(Vector3.UP)
+	var direction := (route[mini(index+1,route.size()-1)]-route[index]).normalized()
+	var start_distance := route_distances[index]+(position-route[index]).dot(direction)
+	for other in rivals:
+		if other == car or other.get_meta("retired",false) or other.get_meta("pit_ghost",false):
+			continue
+		var driver = other.get_node_or_null("Driver")
+		if driver != null and driver.mode not in [Mode.RACING,Mode.FORMATION]:
+			continue
+		var local: Vector3 = car.track.to_local(other.global_position)
+		var offset := local-end
+		var longitudinal := offset.dot(heading)
+		var lateral := offset.dot(right)
+		if racecraft.enabled:
+			# Arc distance also sees cars still rounding turn two; a straight
+			# projection can discard them before they reach the merge.
+			var coordinates: Vector2 = racecraft.coordinates(self,other)
+			longitudinal = fposmod(coordinates.x-race_distances[route_join_index]+race_length_m*.5,race_length_m)-race_length_m*.5
+			lateral = (racecraft.inner[route_join_index]-end).dot(right)+coordinates.y+8.0
+		var minimum_gap := INF
+		var maximum_gap := -INF
+		# Protect the whole lateral crossing, not just the final join point.
+		# A faster car can catch us at first overlap and be clear by the end.
+		for i in range(index,route.size()):
+			if absf((route[i]-end).dot(right)-lateral) > 3.5:
+				continue
+			var time := maxf(0.0,route_distances[i]-start_distance)/speed
+			var predicted: float = longitudinal+other.speed_mps*time-(route[i]-end).dot(heading)
+			minimum_gap = minf(minimum_gap,predicted)
+			maximum_gap = maxf(maximum_gap,predicted)
+		var margin := 12.0+maxf(0.0,other.speed_mps-speed)*.5
+		if (minimum_gap < 12.0 and maximum_gap > -margin) or position.distance_to(local) < 12:
+			merge_blocker = str(other.name)
+			return false
+	return true
+
 func configure_practice(session_node: Node, seed_value: int) -> void:
 	practice_cycle = true
 	practice_session = session_node
@@ -537,8 +595,10 @@ func configure_race_pits(session_node: Node, box_pose: Transform3D) -> void:
 	var box: Vector3 = car.track.to_local(box_pose.origin)
 	var transit_m := 300.0
 	var last := pit[0]
-	for point in pit:
-		if point.x >= box.x:
+	var stall_index: int = car.track_data.nearest_pit_index(box) if car.track_data.path_based_pits else -1
+	for pit_index in range(pit.size()):
+		var point := pit[pit_index]
+		if (car.track_data.path_based_pits and pit_index >= stall_index) or (not car.track_data.path_based_pits and point.x >= box.x):
 			break
 		transit_m += last.distance_to(point)
 		last = point
@@ -610,11 +670,14 @@ func _update_race_service() -> bool:
 		return false
 	var state = car.player_state
 	var progress := clampf((elapsed-service_started)/service_duration_seconds,0.0,1.0)
+	state.service_remaining = maxf(0.0,service_duration_seconds-(elapsed-service_started))
 	state.fuel_gal = lerpf(service_start_fuel,state.fuel_capacity_gal,progress)
 	state.fuel_changed.emit()
 	if progress < 1.0 or practice_session.status != practice_session.Status.RUNNING:
 		return true
 	state.selected_fuel_gal = state.fuel_capacity_gal
+	state.replace_tyres()
+	state.service_remaining = 0.0
 	state.pit_stall_state = state.StallState.STOPPED
 	completed_fuel_stops += 1
 	service_started = -1.0
@@ -679,15 +742,23 @@ func _begin_pit_entry(inside_return: bool = false, minimum_approach_m: float = 0
 	for i in range(route.size()-1):
 		pit_entry_lane_distance += route[i].distance_to(route[i+1])
 	var box: Vector3 = car.track.to_local(pit_box_pose.origin)
-	for point in pit:
-		if point.x >= box.x-35.0:
+	var stall_index: int = car.track_data.pit_approach_index(box) if car.track_data.path_based_pits else -1
+	for pit_index in range(pit.size()):
+		var point := pit[pit_index]
+		if (car.track_data.path_based_pits and pit_index >= stall_index) or (not car.track_data.path_based_pits and point.x >= box.x-35.0):
 			break
 		if point.distance_to(route[-1]) > .1:
 			route.append(point)
 	var turn := route[-1]
 	for i in range(1,31):
 		var t := i/30.0
-		route.append(Vector3(lerpf(turn.x,box.x,t),lerpf(turn.y,box.y,t),lerpf(turn.z,box.z,t*t*(3.0-2.0*t))))
+		if car.track_data.path_based_pits:
+			var forward: Vector3 = car.track.global_basis.inverse()*(-pit_box_pose.basis.z)
+			var entry_heading := (pit[mini(stall_index+1,pit.size()-1)]-pit[maxi(0,stall_index-1)]).normalized()
+			var distance := turn.distance_to(box)
+			route.append((2*t*t*t-3*t*t+1)*turn+(t*t*t-2*t*t+t)*entry_heading*distance+(-2*t*t*t+3*t*t)*box+(t*t*t-t*t)*forward*distance)
+		else:
+			route.append(Vector3(lerpf(turn.x,box.x,t),lerpf(turn.y,box.y,t),lerpf(turn.z,box.z,t*t*(3.0-2.0*t))))
 	route_distances = PackedFloat64Array([0.0])
 	for i in range(route.size()-1):
 		route_distances.append(route_distances[-1]+route[i].distance_to(route[i+1]))
@@ -695,10 +766,13 @@ func _begin_pit_entry(inside_return: bool = false, minimum_approach_m: float = 0
 
 func _inside_return_point(at_index: int) -> Vector3:
 	if racecraft.enabled:
-		# Keep the car centre 1.5 m inside the authored inner track boundary.
-		return racecraft.inner[at_index].move_toward(racecraft.outer[at_index],1.5)
+		# The corridor's inner edge is at -8 m; the apron spans -10 to -16 m.
+		# Aim at its centre (-13 m), with the whole car below the white line.
+		var inward: Vector3 = racecraft.inner[at_index]-racecraft.outer[at_index]
+		inward.y = 0.0
+		return racecraft.inner[at_index]+inward.normalized()*5.0
 	var tangent := (race[(at_index+1)%race.size()]-race[at_index]).normalized()
-	return race[at_index]-tangent.cross(Vector3.UP)*6.5
+	return race[at_index]-tangent.cross(Vector3.UP).normalized()*13.0
 
 func _pit_entry_speed() -> float:
 	var position: Vector3 = car.track.to_local(car.global_position)

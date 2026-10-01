@@ -27,9 +27,26 @@ var green_banner_seconds := 0.0
 @onready var player_state = $DisplayCar/PlayerState
 
 func _ready() -> void:
+	var selection: Dictionary = get_tree().root.get_meta("roster_selection", {})
+	var selected_track: String = selection.get("track_id","mile_oval")
+	if selected_track != "mile_oval":
+		ContentCatalog.refresh()
+		var package: Dictionary = ContentCatalog.tracks.get(selected_track,{})
+		if not package.get("available",false):
+			push_error("Selected track is unavailable: "+selected_track)
+			set_process(false)
+			set_physics_process(false)
+			return
+		var previous := $MileOval
+		remove_child(previous)
+		previous.free()
+		var circuit: Node3D = load(package.scene_path).instantiate()
+		# Preserve the scene node contract used by cameras and race control.
+		circuit.name = "MileOval"
+		add_child(circuit)
+		track_session_file = str(package.package_path)+"/session.json"
 	if batch_static_visuals:
 		visual_batches.build($MileOval)
-	var selection: Dictionary = get_tree().root.get_meta("roster_selection", {})
 	roster_file = selection.get("file",roster_file)
 	roster_seed = selection.get("seed",roster_seed)
 	ai_telemetry_enabled = selection.get("ai_telemetry",ai_telemetry_enabled)
@@ -70,6 +87,9 @@ func _ready() -> void:
 		set_process(false)
 		return
 	player_state.configure_fuel(player.parameters.values,max_fuel_capacity_gal if session_mode == "race" else 0.0)
+	player.load_aero_setup(track_session_file)
+	player.load_gearing_setup(track_session_file)
+	_configure_track_fuel(player_state)
 	_update_pit_state()
 	_add_limiter_end_marker()
 	var pit_marker := preload("res://content/vehicles/open_wheel/pit_crew/pit_marker.gd").new()
@@ -88,12 +108,13 @@ func _ready() -> void:
 	player_state.configure_stall(player,session,$MileOval.global_transform*track_data.pit_box_transform())
 	for i in range(ai_cars.size()):
 		ai_cars[i].player_state.configure_stall(ai_cars[i],session,$MileOval.global_transform*track_data.pit_box_transform(i+1))
-	$MileOval/PitStations.match_assigned_cars([player]+ai_cars,track_data.pit_boxes)
+	if $MileOval.has_node("PitStations"):
+		$MileOval/PitStations.match_assigned_cars([player]+ai_cars,track_data.pit_boxes)
 	lap_timing = Node.new()
 	lap_timing.name = "LapTiming"
 	lap_timing.set_script(load("res://game/race/lap_timing.gd"))
 	add_child(lap_timing)
-	lap_timing.configure($MileOval,session,[player]+ai_cars)
+	lap_timing.configure($MileOval,session,[player]+ai_cars,track_session_file.get_base_dir()+"/ai/timing_gates.json")
 	if session_mode == "race":
 		lap_timing.reset_for_race()
 		session.green_flag.connect(_on_green_flag)
@@ -113,10 +134,26 @@ func _ready() -> void:
 	session.race_control = race_control
 	session.finished.connect(_on_session_finished)
 	_add_race_ui()
+	var pit_monitor := preload("res://game/ui/pit_monitor.gd").new()
+	pit_monitor.name = "PitMonitor"
+	pit_monitor.practice = self
+	add_child(pit_monitor)
 	_update_hud()
+	# Start after track, saved setup and input bindings have been configured so
+	# the recording metadata describes the actual session. F11 still toggles it.
+	var telemetry_error: Error = player.telemetry.start(player)
+	if telemetry_error != OK:
+		push_error("Could not start player telemetry: "+error_string(telemetry_error))
 
 func _car_id(car: Node3D) -> String:
 	return "player" if car == player else str(car.get_meta("roster_entry").id)
+
+func _configure_track_fuel(state: Node) -> void:
+	if track_data.path_based_pits:
+		# Preserve consumption per metre while making lap-based strategy use
+		# this circuit's length rather than the car's calibration circuit.
+		state.fuel_per_lap_gal *= track_data.circuit_length_m/state.fuel_reference_lap_m
+		state.fuel_reference_lap_m = track_data.circuit_length_m
 
 func _build_grid(selection: Dictionary) -> void:
 	var fallback: Array = []
@@ -180,7 +217,7 @@ func _physics_process(_delta: float) -> void:
 	_update_pit_state()
 	if session.status == session.Status.FORMATION and formation_leader != null:
 		var leader_position: Vector3 = $MileOval.to_local(formation_leader.global_position)
-		if pace_car.clear_of_track and leader_position.x >= track_data.green_point.x and leader_position.z > 100.0:
+		if pace_car.clear_of_track and track_data.in_green_zone(leader_position):
 			session.show_green()
 	elif session.session_type == session.SessionType.RACE and session.status == session.Status.RUNNING and lap_timing != null:
 		for entry in lap_timing.entries:
@@ -200,7 +237,7 @@ func _update_hud() -> void:
 	var status_text: String
 	if session.session_type == session.SessionType.RACE:
 		if session.status == session.Status.FORMATION:
-			status_text = "FORMATION LAP — HOLD 80 km/h"
+			status_text = "FORMATION LAP — HOLD %.0f km/h" % track_data.pace_speed_kph
 			if pace_car != null and pace_car.phase != pace_car.Phase.LEADING:
 				status_text = "PACE CAR IN — HOLD FORMATION UNTIL GREEN"
 		elif session.status == session.Status.FINISHED:
@@ -217,6 +254,8 @@ func _update_hud() -> void:
 	var session_name := session_mode.to_upper()
 	$HUD/Panel/Label.text = "%s  •  %s\n%s  •  %s" % [session_name,status_text,location,limiter]
 	$HUD/Panel/Label.modulate = Color("ffcf42") if race_control != null and race_control.active() else Color.WHITE
+	if session_mode != "race" and player_state.pit_stall_state == player_state.StallState.STOPPED:
+		$HUD/Panel/Label.text += "\nENTER: pit monitor" if player.get_node("Cockpit").active else "\n5: cockpit pit monitor"
 	if not player.get_node("Cockpit").active:
 		$HUD/Panel/Label.text += "\n%.0f km/h  •  GEAR %s  •  %.0f RPM" % [absf(player_state.speed_mps)*3.6,player.gear_text,player.engine_rpm]
 	var followed: int = $InspectionCamera.followed_ai
@@ -302,6 +341,7 @@ func _spawn_ai() -> void:
 		vehicle.track = $MileOval
 		vehicle.player_state = state
 		state.configure_fuel(vehicle.parameters.values,max_fuel_capacity_gal if session_mode == "race" else 0.0)
+		_configure_track_fuel(state)
 		state.assigned_pit_box_id = track_data.pit_boxes[i+1].id
 		vehicle.update_zone_state()
 		for mesh in vehicle.get_node("Visual").find_children("*","MeshInstance3D",true,false):
@@ -370,6 +410,9 @@ func _add_limiter_end_marker() -> void:
 	box.size = Vector3(.3,.025,10)
 	line.mesh = box
 	line.position = Vector3(track_data.speed_exit_x,.04,101)
+	if track_data.path_based_pits:
+		line.transform = track_data.limiter_pose
+		box.size = Vector3(10,.025,.3)
 	var material := StandardMaterial3D.new()
 	material.albedo_color = Color(0.2,1,0.25)
 	line.material_override = material
@@ -380,4 +423,7 @@ func _add_limiter_end_marker() -> void:
 	sign.pixel_size = .012
 	sign.position = Vector3(track_data.speed_exit_x,2.2,94.5)
 	sign.rotation.y = -PI / 2
+	if track_data.path_based_pits:
+		sign.transform = track_data.limiter_pose
+		sign.position += sign.basis.x*7+Vector3.UP*2.2
 	$MileOval.add_child(sign)

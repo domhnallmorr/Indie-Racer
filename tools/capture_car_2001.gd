@@ -24,7 +24,9 @@ func capture() -> void:
 	var dismore := "--dismore" in OS.get_cmdline_user_args()
 	var beechler := "--beechler" in OS.get_cmdline_user_args()
 	var mcgehee := "--mcgehee" in OS.get_cmdline_user_args()
-	var custom_skin := sharpe or hornish or lazier or boat or salazar or giaffone or unser or cheever or calkins or dare or ward or buhl or hattori or dismore or beechler or mcgehee
+	var jaques := "--jaques" in OS.get_cmdline_user_args()
+	var ray := "--ray" in OS.get_cmdline_user_args()
+	var custom_skin := ray or jaques or sharpe or hornish or lazier or boat or salazar or giaffone or unser or cheever or calkins or dare or ward or buhl or hattori or dismore or beechler or mcgehee
 	var prefix := "lazier_2001_" if lazier else ("hornish_2001_" if hornish else ("sharpe_2001_" if sharpe else "car_2001_"))
 	if boat:
 		prefix = "boat_2001_"
@@ -52,6 +54,10 @@ func capture() -> void:
 		prefix = "beechler_2001_"
 	if mcgehee:
 		prefix = "mcgehee_2001_"
+	if jaques:
+		prefix = "jaques_2001_"
+	if ray:
+		prefix = "ray_2001_"
 	if custom_skin:
 		var skin := "buddy_lazier_2001.png" if lazier else ("sam_hornish_2001.png" if hornish else "scott_sharpe_2001.png")
 		if boat:
@@ -80,6 +86,10 @@ func capture() -> void:
 			skin = "donnie_beechler_2001.png"
 		if mcgehee:
 			skin = "robbie_mcgehee_2001.png"
+		if jaques:
+			skin = "jaques_lazier_2001.png"
+		if ray:
+			skin = "greg_ray_2001.png"
 		assert(preload("res://content/vehicles/open_wheel/liveries/apply_livery.gd").apply(car,load("res://content/vehicles/open_wheel/liveries/"+skin)) == 14)
 	var low := Vector3(INF,INF,INF)
 	var high := Vector3(-INF,-INF,-INF)
@@ -103,10 +113,10 @@ func capture() -> void:
 	var front = car.find_child("WheelFrontLeft",true,false)
 	var rear = car.find_child("WheelRearLeft",true,false)
 	assert(front != null and rear != null)
-	assert(absf(front.global_position.z-rear.global_position.z+3.0)<0.001)
-	assert(absf(front.global_position.z+1.242882)<0.001)
+	assert(absf(front.global_position.z-rear.global_position.z+3.1)<0.001)
+	assert(absf(front.global_position.z+1.342882)<0.001)
 	assert(absf(rear.global_position.z-1.757118)<0.001)
-	assert(absf(front.global_position.z-low.z-1.032118)<0.002)
+	assert(absf(front.global_position.z-low.z-0.932118)<0.002)
 	assert(paint_count == 14)
 	for wing_name in ["FrontWing","RearWing"]:
 		var wing = car.find_child(wing_name,true,false)
@@ -171,5 +181,5 @@ func capture() -> void:
 		await process_frame
 	await RenderingServer.frame_post_draw
 	root.get_texture().get_image().save_png("res://builds/car_2001_uv_check.png")
-	print("IR05 OVAL PASSED: bounds ",size,"; 3 m wheelbase; ",paint_count," textured paint panels with valid UVs.")
+	print("IR05 OVAL PASSED: bounds ",size,"; 3.1 m wheelbase; ",paint_count," textured paint panels with valid UVs.")
 	quit()

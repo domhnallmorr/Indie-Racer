@@ -1,5 +1,8 @@
 extends Node3D
 ## Simple period four-door saloon, facing local -Z; dimensions in metres.
+const TYRE_CONTACTS := [
+	Vector3(-.87,0,-1.43),Vector3(-.87,0,1.46),
+	Vector3(.87,0,-1.43),Vector3(.87,0,1.46)]
 var beacons: Array[MeshInstance3D] = []
 var flashing := false
 var clock := 0.0

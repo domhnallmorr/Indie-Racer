@@ -106,7 +106,7 @@ func validate() -> void:
 			failures.append("No completed pass on side "+str(side))
 		if overlap_ticks == 0:
 			failures.append("No side-by-side running on side "+str(side))
-		# The stronger outside-line tow can complete the pass before turn entry.
+		# The outside approach may complete the pass before turn entry.
 		if side <= 0 and corner_overlap_ticks == 0:
 			failures.append("No side-by-side corner on side "+str(side))
 		if contact_ticks > 0:

@@ -32,6 +32,8 @@ func _process(_delta: float) -> void:
 		focus_player()
 
 func _ready() -> void:
+	near = .5
+	doppler_tracking = Camera3D.DOPPLER_TRACKING_IDLE_STEP
 	cull_mask = 19
 	_update_camera()
 
@@ -68,6 +70,9 @@ func _unhandled_input(event: InputEvent) -> void:
 			distance = 850.0
 			yaw = 0.35
 			pitch = 0.9
+			var circuit := get_parent().get_node("MileOval")
+			if circuit.get("overview_distance") != null:
+				distance = circuit.overview_distance
 		KEY_2:
 			tv_mode = false
 			follow_player = false
@@ -75,6 +80,9 @@ func _unhandled_input(event: InputEvent) -> void:
 			distance = 170.0
 			yaw = 0.0
 			pitch = 0.7
+			var circuit := get_parent().get_node("MileOval")
+			if circuit.get("pit_focus") != null:
+				target = circuit.to_global(circuit.pit_focus)
 		KEY_3:
 			tv_mode = false
 			follow_player = false
@@ -82,6 +90,9 @@ func _unhandled_input(event: InputEvent) -> void:
 			distance = 90.0
 			yaw = -1.57
 			pitch = 0.25
+			var circuit := get_parent().get_node("MileOval")
+			if circuit.get("bank_focus") != null:
+				target = circuit.to_global(circuit.bank_focus)
 		KEY_4:
 			tv_mode = false
 			followed_ai = -1
@@ -113,8 +124,16 @@ func _update_camera() -> void:
 	if tv_mode:
 		_update_tv_camera()
 		return
+	var previous_position := global_position
 	position = target + Vector3(sin(yaw) * cos(pitch), sin(pitch), cos(yaw) * cos(pitch)) * distance
 	look_at(target)
+	_reset_doppler_after_cut(previous_position)
+
+func _reset_doppler_after_cut(previous_position: Vector3) -> void:
+	# A view cut is not listener motion; discard its impossible velocity.
+	if global_position.distance_to(previous_position) > 25.0:
+		doppler_tracking = Camera3D.DOPPLER_TRACKING_DISABLED
+		doppler_tracking = Camera3D.DOPPLER_TRACKING_IDLE_STEP
 
 func followed_subject() -> Node3D:
 	if followed_ai >= 0 and followed_ai < get_parent().ai_cars.size():
@@ -163,22 +182,30 @@ func _update_tv_camera(force_switch := false) -> void:
 	if not is_instance_valid(subject):
 		return
 	var track: Node3D = get_parent().get_node("MileOval")
+	var positions: Array[Vector3] = []
+	if track.get("camera_positions") != null:
+		for p in track.camera_positions:
+			positions.append(Vector3(p[0],p[1],p[2]))
+	else:
+		positions.assign(TV_CAMERA_POSITIONS)
 	var local_subject := track.to_local(subject.global_position)
 	var best_index := 0
 	var best_distance := INF
-	for i in range(TV_CAMERA_POSITIONS.size()):
-		var candidate_distance := Vector2(TV_CAMERA_POSITIONS[i].x-local_subject.x,TV_CAMERA_POSITIONS[i].z-local_subject.z).length()
+	for i in range(positions.size()):
+		var candidate_distance := Vector2(positions[i].x-local_subject.x,positions[i].z-local_subject.z).length()
 		if candidate_distance < best_distance:
 			best_distance = candidate_distance
 			best_index = i
 	if not force_switch and tv_camera_index >= 0:
-		var active: Vector3 = TV_CAMERA_POSITIONS[tv_camera_index]
+		var active: Vector3 = positions[tv_camera_index]
 		var active_distance := Vector2(active.x-local_subject.x,active.z-local_subject.z).length()
 		if active_distance <= best_distance + TV_SWITCH_ADVANTAGE_M:
 			best_index = tv_camera_index
 	tv_camera_index = best_index
-	global_position = track.to_global(TV_CAMERA_POSITIONS[tv_camera_index])
+	var previous_position := global_position
+	global_position = track.to_global(positions[tv_camera_index])
 	var speed: float = absf(float(subject.get("speed_mps"))) if subject.get("speed_mps") != null else 0.0
 	var lead := -subject.global_basis.z * clampf(speed*.12,0.0,12.0)
 	target = subject.global_position + lead + Vector3.UP*.7
 	look_at(target)
+	_reset_doppler_after_cut(previous_position)

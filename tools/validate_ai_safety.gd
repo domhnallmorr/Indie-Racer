@@ -20,6 +20,17 @@ func validate() -> void:
 	var peak_passing := 0.0
 	for car in main.ai_cars:
 		var d = car.get_node("Driver")
+		# Starting, sustaining and abandoning an attack must preserve baseline
+		# pace on either passing line, including corners and the return to RACE.
+		for choice in [-1.0,0.0,1.0]:
+			d.racecraft.lane = choice
+			d.racecraft.target_lane = choice
+			d.racecraft.opponent = null
+			var baseline: float = d._planned_speed()
+			d.racecraft.opponent = slow if car != slow else fast
+			check(is_equal_approx(d._planned_speed(),baseline),"Attacking must not increase planned pace")
+			d.racecraft.target_lane = 0
+			check(is_equal_approx(d._planned_speed(),baseline),"Returning from a pass must preserve planned pace")
 		d.racecraft.opponent = slow if car != slow else fast
 		d.racecraft.lane = 1
 		d.racecraft.target_lane = 1
@@ -29,6 +40,7 @@ func validate() -> void:
 			peak_passing = maxf(peak_passing,clean*d.racecraft.speed_factor()*3.6)
 			check(is_equal_approx(d._scaled_reference_speed(d.reference_peak_speed*.75),d.reference_peak_speed*.75*d.effective_pace_scale()),"Corner pace ratings remain intact")
 	check(peak_clean <= 315 and peak_passing <= 322,"Straight-line speeds must stay close to recorded player reference")
+	check(is_equal_approx(peak_clean,peak_passing),"Passing must not add a speed bonus")
 	check(driver._scaled_reference_speed(driver.reference_peak_speed) > slow.get_node("Driver")._scaled_reference_speed(driver.reference_peak_speed),"Retain individual straight-line differences")
 	print("SPEED peak_clean_kph=",peak_clean," peak_passing_kph=",peak_passing)
 	# Integrate the actual collision guard and reference acceleration/braking

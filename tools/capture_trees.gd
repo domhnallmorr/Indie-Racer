@@ -28,6 +28,10 @@ func capture() -> void:
 	camera.look_at(track.global_position+Vector3(0,9,223))
 	camera.fov = 66.0
 	await save_view("trees_selection")
+	camera.position = track.global_position+Vector3(-64,12,263)
+	camera.look_at(track.global_position+Vector3(-64,8,223))
+	camera.fov = 55.0
+	await save_view("trees_detail")
 	quit()
 func save_view(label: String) -> void:
 	for i in range(10):

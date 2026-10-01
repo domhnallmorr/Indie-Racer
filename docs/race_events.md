@@ -26,11 +26,26 @@ for 15 simulation seconds, then returns to its assigned pit box. It remains
 retired and non-collidable. New smoke stops at recovery; existing puffs fade out.
 Recovery continues if the race finishes during the sequence.
 
+For engine failures under yellow, a separate visual recovery keeps a copy of
+the stopped car at the scene after the simulation recovers it. On the second
+pace-car lap after the incident, a white/red safety pickup with flashing amber
+lights parks behind it and two marshals attend. On lap three, a flatbed appears
+ahead, loads the car over ten seconds, then carries it along the apron and
+pit-entry route. The car becomes visible in its assigned box on arrival.
+All recovery vehicles and crew are non-colliding visuals: they do not change
+classification, caution length, pit permissions, or race traffic. If the pace
+car returns early or the race finishes, the remaining visual schedule advances
+at the equivalent pace speed and completes normally. Further incidents have
+their own recovery scenes. `tools/validate_recovery_visuals.gd` checks the
+sequence, loading, cleanup, and early-ending cautions; add `-- --capture` in a
+rendered run for screenshots of the pickup and loaded flatbed.
+
 **Other** leaves the engine running and smoothly slows the car to 100 km/h along
-the inside line (1.5 m inside the authored inner track boundary). It follows the
+the middle of the apron, 3 m below the inside track edge and entirely left of
+the inside white line after its gradual pull-over. It follows the
 pit-entry route, observes the pit speed limit, and parks in its assigned box.
 If the failure occurs too close to pit entry for a controlled slowdown, it takes
-another inside lap. There is no smoke and no yellow. Timing continues during
+another apron lap. There is no smoke and no yellow. Timing continues during
 the return; arrival shuts down the engine and permanently classifies the car
 as OUT with reason `Other`, without refuelling or rejoining. The return uses
 scripted movement and collision ghosting, as the existing retirement recovery

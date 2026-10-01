@@ -7,13 +7,15 @@ func run() -> void:
 	root.add_child(scene)
 	await process_frame
 	var player = scene.get_node("DisplayCar")
+	player.telemetry.stop()
 	assert(player.telemetry.start(player, "res://builds/telemetry_test") == OK)
 	for frame in range(10):
 		await physics_frame
 	player.telemetry.stop()
 	var file := FileAccess.open(player.telemetry.path, FileAccess.READ)
 	var header := file.get_csv_line()
-	assert(header.size() == 45)
+	for column in ["time_s","drag_n","downforce_n","slipstream_target","slipstream_strength","slipstream_drag_reduction"]:
+		assert(column in header,"Missing telemetry column: "+column)
 	var rows := 0
 	while not file.eof_reached():
 		var row := file.get_csv_line()
@@ -21,8 +23,10 @@ func run() -> void:
 			continue
 		assert(row.size() == header.size())
 		assert(float(row[1]) > 0)
+		assert(float(row[header.find("slipstream_target")]) == 0.0,"Solo parked car has no tow")
+		assert(float(row[header.find("slipstream_drag_reduction")]) == 0.0)
 		rows += 1
 	assert(rows > 0)
 	assert(FileAccess.file_exists(player.telemetry.path.get_basename() + ".cfg"))
-	print("TELEMETRY PASSED: ", rows, " rows, 45 columns, metadata and clean stop")
+	print("TELEMETRY PASSED: ", rows, " rows, ",header.size()," columns, tow fields, metadata and clean stop")
 	quit()

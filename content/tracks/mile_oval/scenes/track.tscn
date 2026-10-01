@@ -19,6 +19,7 @@
 
 [ext_resource type="Script" path="res://content/tracks/mile_oval/pit_station/pit_stations.gd" id="17_station"]
 [ext_resource type="Script" path="res://content/tracks/mile_oval/pit_entry/pit_access.gd" id="18_access"]
+[ext_resource type="Script" path="res://content/tracks/mile_oval/backstraight/camera_platforms.gd" id="19_tv_platforms"]
 
 [node name="MileOval" type="Node3D" unique_id=1582581415]
 metadata/units = "metres"
@@ -37,6 +38,9 @@ script = ExtResource("3_hoardings")
 
 [node name="BackstraightScenery" type="Node3D" parent="."]
 script = ExtResource("4_backstraight")
+
+[node name="TVCameraPlatforms" type="Node3D" parent="."]
+script = ExtResource("19_tv_platforms")
 
 [node name="MainGrandstand" type="Node3D" parent="."]
 script = ExtResource("5_mainstand")

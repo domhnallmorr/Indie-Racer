@@ -14,6 +14,11 @@ var profile_speed := 0.0
 var requested_speed := 0.0
 var current_line_error := 0.0
 var reference_peak_speed := 0.0
+var reference_min_speed := INF
+var driver_speed_weighting := "legacy"
+var tow_straight_weights := PackedFloat64Array()
+var tow_pace_weights := PackedFloat64Array()
+var tow_segment_lengths := PackedFloat64Array()
 
 func configure(vehicle: Node3D, race_data: Dictionary, delay: float, record_telemetry: bool = false) -> void:
 	# Parent diagnostic columns describe pedal/tyre controls, so use our own schema.
@@ -52,6 +57,7 @@ func configure(vehicle: Node3D, race_data: Dictionary, delay: float, record_tele
 			return
 		reference_speeds.append(value)
 		reference_peak_speed = maxf(reference_peak_speed,value)
+		reference_min_speed = minf(reference_min_speed,value)
 	pit_profile = pit
 	var entry: Dictionary = car.get_meta("roster_entry")
 	if float(profile.get("reference_lap_s",0)) <= 0 or float(entry.get("icr2_lap_s",0)) <= 0:
@@ -60,7 +66,19 @@ func configure(vehicle: Node3D, race_data: Dictionary, delay: float, record_tele
 		return
 	reference_lap_s = float(profile.reference_lap_s)
 	base_lap_target_s = float(entry.get("icr2_lap_s",reference_lap_s))
+	# Legacy roster times are calibrated to Mile Oval. Other tracks preserve
+	# those relative driver differences around their own track profile pace.
+	if float(profile.get("roster_reference_lap_s",0)) > 0:
+		base_lap_target_s *= reference_lap_s/float(profile.roster_reference_lap_s)
+	var spread := float(profile.get("driver_pace_spread",1.0))
+	driver_speed_weighting = str(profile.get("driver_speed_weighting","legacy"))
+	if not is_finite(spread) or spread < 0.0 or spread > 1.0 or driver_speed_weighting not in ["legacy","profile_range"]:
+		profile_error = "Invalid driver pace calibration"
+		push_error(profile_error)
+		return
+	base_lap_target_s = lerpf(reference_lap_s,base_lap_target_s,spread)
 	pace_scale = reference_lap_s/base_lap_target_s
+	_cache_tow_profile()
 	profile_ready = true
 	if record_telemetry:
 		DirAccess.make_dir_recursive_absolute("user://telemetry")
@@ -72,6 +90,7 @@ func _physics_process(delta: float) -> void:
 	if car == null or not profile_ready:
 		return
 	elapsed += delta
+	car.update_slipstream(delta)
 	if race_pit_cycle and race_plan.update(self,delta):
 		return
 	if _update_race_service():
@@ -150,21 +169,70 @@ func _planned_speed() -> float:
 	var segment := race[(index+1)%race.size()]-race[index]
 	var fraction := clampf((position-race[index]).dot(segment)/maxf(segment.length_squared(),.001),0,1)
 	var clean_air_speed := _scaled_reference_speed(lerpf(reference_speeds[index],reference_speeds[(index+1)%race.size()],fraction))
-	return clean_air_speed*racecraft.speed_factor()
+	var lane_factor := racecraft.speed_factor()
+	var result := clean_air_speed*lane_factor
+	if mode != Mode.RACING or car.slipstream_speed_fraction < .00001:
+		return result
+	# Only increase straight-line pace. Preview the same profile ahead so the
+	# tow cannot delay braking for a bend or override lane-change speed factors.
+	var tow: float = car.slipstream_speed_fraction
+	result *= 1.0+tow*tow_straight_weights[index]
+	var horizon: float = car.speed_mps*car.speed_mps/(2.0*car.braking_limit)+car.speed_mps*.5+braking_margin_m
+	var distance := -fraction*segment.length()
+	# Fuel, tyre condition and lane commitment are constant across this lookup.
+	# Static curvature/profile weights were computed once when loading the track.
+	var scale := lane_factor*base_lap_target_s/maxf(.001,target_lap_s())
+	var pace_delta := clampf(pace_scale,.98,1.02)-pace_scale
+	var braking: float = 2.0*car.braking_limit
+	var margin: float = braking_margin_m+car.speed_mps*.5
+	var result_squared := result*result
+	for step in range(1,race.size()):
+		var at := (index+step)%race.size()
+		distance += tow_segment_lengths[at]
+		if distance > horizon:
+			break
+		var future := reference_speeds[at]*(pace_scale+pace_delta*tow_pace_weights[at])*scale*(1.0+tow*tow_straight_weights[at])
+		result_squared = minf(result_squared,future*future+braking*maxf(0.0,distance-margin))
+	return sqrt(result_squared)
+
+func _cache_tow_profile() -> void:
+	tow_straight_weights.resize(race.size())
+	tow_pace_weights.resize(race.size())
+	tow_segment_lengths.resize(race.size())
+	for at in range(race.size()):
+		tow_straight_weights[at] = _tow_straight_weight(at)
+		tow_pace_weights[at] = _reference_straight_weight(reference_speeds[at])
+		tow_segment_lengths[at] = race[posmod(at-1,race.size())].distance_to(race[at])
+
+func _tow_straight_weight(at: int) -> float:
+	# Use a broad stencil to avoid tiny vertex noise on authored straights.
+	var before := race[posmod(at-3,race.size())]
+	var centre := race[at]
+	var after := race[(at+3)%race.size()]
+	var length := (before.distance_to(centre)+centre.distance_to(after))*.5
+	var bend := ((after-centre).normalized()-(centre-before).normalized()).length()/maxf(length,.001)
+	return 1.0-smoothstep(.0005,.004,bend)
 
 func _scaled_reference_speed(reference: float) -> float:
 	# Driver ratings retain their guarded straight-line variation. Fuel is a
 	# shared car effect, so its time-derived scale applies across the profile.
-	var straight_weight := smoothstep(.85,.98,reference/maxf(reference_peak_speed,1.0))
-	var driver_scale := lerpf(pace_scale,clampf(pace_scale,.98,1.02),straight_weight)
+	var driver_scale := lerpf(pace_scale,clampf(pace_scale,.98,1.02),_reference_straight_weight(reference))
 	var fuel_scale := base_lap_target_s/maxf(.001,target_lap_s())
 	return reference*driver_scale*fuel_scale
+
+func _reference_straight_weight(reference: float) -> float:
+	var straight_weight := smoothstep(.85,.98,reference/maxf(reference_peak_speed,1.0))
+	# Flat-out ovals have a narrow speed range. Normalise within that profile
+	# so corner ratings still matter instead of every sample becoming a straight.
+	if driver_speed_weighting == "profile_range":
+		straight_weight = smoothstep(.2,.85,(reference-reference_min_speed)/maxf(reference_peak_speed-reference_min_speed,.001))
+	return straight_weight
 
 func fuel_pace_penalty_s() -> float:
 	return maxf(0.0,car.player_state.fuel_gal)*FUEL_PACE_PENALTY_S_PER_GAL
 
 func target_lap_s() -> float:
-	return base_lap_target_s+fuel_pace_penalty_s()
+	return base_lap_target_s+fuel_pace_penalty_s()+car.player_state.tyre_pace_penalty_s()
 
 func effective_pace_scale() -> float:
 	return reference_lap_s/maxf(.001,target_lap_s())

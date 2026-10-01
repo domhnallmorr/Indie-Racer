@@ -86,3 +86,11 @@ The mesh generator packs the atlas; geometry changes and rebuilds may repack it.
 ### Robbie McGehee #10
 
 `robbie_mcgehee_2001.png` follows the supplied small reference with near-black bodywork, blue lower panels, silver rear wing and white 10 numbers. Sponsor details are approximate given the reference resolution. Rebuild with `python tools/build_mcgehee_livery.py`; render with `tools/capture_car_2001.gd -- --mcgehee`. The sixteen-driver roster fits the existing expanded pit layout.
+
+### Greg Ray / Johns Manville #2
+
+`greg_ray_2001.png` carries the former navy Jaques entry's Johns Manville design, with Greg Ray driver lettering. Rebuild with `python tools/build_ray_livery.py`; capture with `tools/capture_car_2001.gd -- --ray`.
+
+### Jaques Lazier / Sam Schmidt #99
+
+`jaques_lazier_2001.png` now follows the supplied yellow/red #99 reference: yellow upper body, red sidepods and upper nose panel, black separation lines, white-backed 99 numbers and approximate Sprint PCS, Sam Schmidt, Firestone and Rexhall lettering. Rebuild with `python tools/build_jaques_livery.py`; capture with `tools/capture_car_2001.gd -- --jaques`. Both entries use independent textures. The roster contains eighteen drivers.

@@ -10,6 +10,7 @@ func validate() -> void:
 	var main = load("res://game/main/main.tscn").instantiate()
 	root.add_child(main)
 	var car = main.player
+	car.player_state.request_departure()
 	car.driving_enabled = false
 	# Exit straight beyond the limiter: grass is -0.1 m, pit pavement +0.008 m.
 	for scenario in [

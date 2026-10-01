@@ -1,6 +1,7 @@
-[gd_scene load_steps=4 format=3]
+[gd_scene load_steps=6 format=3]
 
 [ext_resource type="Script" path="res://game/main/menu.gd" id="1_menu"]
+[ext_resource type="PackedScene" path="res://game/ui/controls_panel.tscn" id="2_controls"]
 
 [sub_resource type="StyleBoxFlat" id="PanelStyle"]
 bg_color = Color(0.035, 0.05, 0.07, 0.94)
@@ -83,7 +84,7 @@ offset_top = 48.0
 grow_horizontal = 2
 grow_vertical = 2
 
-[node name="MainMenu" type="Control" parent="Center"]
+[node name="MainMenu" type="MarginContainer" parent="Center"]
 layout_mode = 2
 
 [node name="Panel" type="PanelContainer" parent="Center/MainMenu"]
@@ -114,6 +115,13 @@ theme_override_font_sizes/font_size = 20
 theme_override_styles/normal = SubResource("ButtonNormal")
 theme_override_styles/focus = SubResource("ButtonFocus")
 text = "Race Weekend"
+
+[node name="Options" type="Button" parent="Center/MainMenu/Panel/Margin/Layout"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+theme_override_styles/normal = SubResource("ButtonNormal")
+theme_override_styles/focus = SubResource("ButtonFocus")
+text = "Options"
 
 [node name="Quit" type="Button" parent="Center/MainMenu/Panel/Margin/Layout"]
 layout_mode = 2
@@ -160,6 +168,17 @@ text = "SELECT TRACK"
 [node name="TrackSelect" type="OptionButton" parent="Center/WeekendSetup/Panel/Margin/Layout"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 18
+
+[node name="RosterLabel" type="Label" parent="Center/WeekendSetup/Panel/Margin/Layout"]
+layout_mode = 2
+text = "SELECT ROSTER"
+
+[node name="RosterSelect" type="OptionButton" parent="Center/WeekendSetup/Panel/Margin/Layout"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+fit_to_longest_item = false
+text_overrun_behavior = 3
+tooltip_text = "Starting field used for practice, qualifying and the race."
 
 [node name="LapsLabel" type="Label" parent="Center/WeekendSetup/Panel/Margin/Layout"]
 layout_mode = 2
@@ -225,6 +244,7 @@ horizontal_alignment = 1
 layout_mode = 2
 theme_override_colors/font_color = Color(0.68, 0.73, 0.8, 1)
 horizontal_alignment = 1
+autowrap_mode = 3
 
 [node name="Practice" type="Button" parent="Center/WeekendMenu/Panel/Margin/Layout"]
 layout_mode = 2
@@ -261,6 +281,43 @@ text = "Go to Race"
 layout_mode = 2
 text = "Back"
 
+[node name="Options" type="MarginContainer" parent="."]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 32.0
+offset_top = 24.0
+offset_right = -32.0
+offset_bottom = -24.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Layout" type="VBoxContainer" parent="Options"]
+layout_mode = 2
+theme_override_constants/separation = 14
+
+[node name="Heading" type="Label" parent="Options/Layout"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.95, 0.16, 0.08, 1)
+theme_override_font_sizes/font_size = 28
+text = "OPTIONS — CONTROLS"
+horizontal_alignment = 1
+
+[node name="ControlsPanel" parent="Options/Layout" instance=ExtResource("2_controls")]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="Back" type="Button" parent="Options/Layout"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+theme_override_styles/normal = SubResource("ButtonNormal")
+theme_override_styles/focus = SubResource("ButtonFocus")
+text = "Back"
+
+[connection signal="pressed" from="Options/Layout/Back" to="." method="_on_options_back_pressed"]
+[connection signal="pressed" from="Center/MainMenu/Panel/Margin/Layout/Options" to="." method="_on_options_pressed"]
 [connection signal="pressed" from="Center/MainMenu/Panel/Margin/Layout/RaceWeekend" to="." method="_on_race_weekend_pressed"]
 [connection signal="pressed" from="Center/MainMenu/Panel/Margin/Layout/Quit" to="." method="_on_quit_pressed"]
 [connection signal="pressed" from="Center/WeekendSetup/Panel/Margin/Layout/Continue" to="." method="_on_setup_continue_pressed"]

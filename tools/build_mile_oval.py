@@ -101,7 +101,9 @@ def wall(name, start, end, offset, mat, height=1.15, width=0.5):
         for j in range(4):
             faces.append((4*i+j,4*i+(j+1)%4,4*(i+1)+(j+1)%4,4*(i+1)+j))
     faces.append(tuple(4*count+j for j in range(4)))
-    return mesh(name+'-col', verts, faces, mat)
+    # Closed barriers need outward-facing triangles for one-sided collisions.
+    # The ring construction above winds inward (including top and bottom).
+    return mesh(name+'-col', verts, [tuple(reversed(face)) for face in faces], mat)
 
 
 def box(name, location, dimensions, mat):

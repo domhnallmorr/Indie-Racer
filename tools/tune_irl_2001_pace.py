@@ -8,6 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SOURCE = 'https://en.wikipedia.org/wiki/2001_Pennzoil_Copper_World_Indy_200#Qualifying_classification'
 # Position and best lap in seconds, matched by driver identity (not entry order).
 QUALIFYING = {
+    'GregRay': (1, 20.2631),
     'Hornish': (2, 20.3619), 'JeffWard': (3, 20.4883),
     'Lazier': (6, 20.6966), 'Boat': (7, 20.7898),
     'Buhl': (8, 20.7955), 'Giaffone': (9, 20.8034),
@@ -23,7 +24,7 @@ FAST_QUALIFYING = QUALIFYING['Hornish'][1]
 def main():
     path = ROOT / 'content/rosters/irl_2001/manifest.json'
     roster = json.loads(path.read_text(encoding='utf-8'))
-    assert {entry['id'] for entry in roster['entries']} == set(QUALIFYING) | {'Beechler'}
+    assert {entry['id'] for entry in roster['entries']} == set(QUALIFYING) | {'Beechler', 'JaquesLazier'}
     roster['pace_calibration'] = {
         'source': SOURCE,
         'event': 'Phoenix, 17 March 2001 qualifying',
@@ -31,23 +32,23 @@ def main():
         'anchor_driver_id': 'Hornish',
         'anchor_target_s': FAST_TARGET,
         'anchor_qualifying_s': FAST_QUALIFYING,
-        'notes': 'Preserves qualifying percentage gaps among roster entrants. Greg Ray is not in this roster. Beechler did not qualify at this event: use Salazar as an explicit teammate proxy. These are pace inputs, not guaranteed measured lap times; straight-speed limits, fuel and traffic still apply.',
+        'notes': 'Preserves qualifying percentage gaps among roster entrants. Jaques Lazier uses Greg Ray’s #2 Team Menard result as a retained provisional estimate, not a same-team comparison for his #99. Beechler did not qualify at this event: use Salazar as an explicit teammate proxy. These are pace inputs, not guaranteed measured lap times; straight-speed limits, fuel and traffic still apply.',
     }
     for entry in roster['entries']:
         driver_id = entry['id']
-        proxy = driver_id == 'Beechler'
-        position, time_s = QUALIFYING['Salazar' if proxy else driver_id]
+        proxy = driver_id in ('Beechler', 'JaquesLazier')
+        position, time_s = (1, 20.2631) if driver_id == 'JaquesLazier' else QUALIFYING['Salazar' if proxy else driver_id]
         entry['icr2_lap_s'] = round(FAST_TARGET * time_s / FAST_QUALIFYING, 6)
         entry['pace_reference'] = {
             'qualifying_position': None if proxy else position,
             'qualifying_time_s': None if proxy else time_s,
             'basis_time_s': time_s,
-            'basis': 'teammate_proxy' if proxy else 'qualifying',
+            'basis': ('retained_estimate' if driver_id == 'JaquesLazier' else 'teammate_proxy') if proxy else 'qualifying',
         }
         if proxy:
-            entry['pace_reference']['proxy_driver_id'] = 'Salazar'
+            entry['pace_reference']['proxy_driver_id'] = 'GregRay' if driver_id == 'JaquesLazier' else 'Salazar'
         print(f"{entry['driver_name']:20} {entry['icr2_lap_s']:.4f} s" + (' (estimated)' if proxy else ''))
-    roster['description'] = '2001 IRL reference liveries with Phoenix 2001 qualifying-relative AI pace, anchored to a 21.2-second fastest target. Beechler uses a documented Salazar teammate estimate.'
+    roster['description'] = '2001 IRL reference liveries with Phoenix 2001 qualifying-relative AI pace, anchored to a 21.2-second Hornish target. Beechler uses a Salazar estimate; Jaques Lazier retains his previous provisional pace estimate.'
     path.write_text(json.dumps(roster, indent=2) + '\n', encoding='utf-8')
 
 if __name__ == '__main__':

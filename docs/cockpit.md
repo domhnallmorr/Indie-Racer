@@ -10,6 +10,19 @@ See `docs/practice.md` for session and spawn configuration.
 - **Home:** reset eye height and field of view. Adjustments are session-only.
 - Exterior views retain right-drag orbit and wheel zoom.
 
+Practice and qualifying pit boxes have a physical monitor in front of the cockpit.
+Press **Enter** or click its screen to open a readable close-up. Use mouse,
+arrows/Tab and Enter to select **Edit Car Setup**, **Return to Cockpit**, or
+**Go to Track**. Edit Car Setup opens a submenu with **Fuel Load** and **Wings**.
+Fuel changes apply immediately; Wings contains the body package and wing angles.
+**Escape** returns from an editor to the setup submenu, then the main menu, then
+the cockpit. Wing setup changes
+require Apply and are saved per track; leaving the editor without applying discards
+edits. Setup is no longer in F12 and can only be applied while parked in a practice
+or qualifying box. The monitor clears before departure and returns on arrival.
+Race stops retain LCD refuelling progress and automatic release. Tyre selection
+is not implemented.
+
 The separate metric interior source is
 `source_art/vehicles/open_wheel/cockpit.blend`; its runtime export is
 `content/vehicles/open_wheel/models/cockpit.glb`. Run Blender with

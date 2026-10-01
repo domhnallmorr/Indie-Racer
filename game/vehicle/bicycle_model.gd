@@ -27,7 +27,20 @@ var rear_usage := 0.0
 var front_load := 0.0
 var rear_load := 0.0
 var drag_n := 0.0
+const Slipstream = preload("res://game/vehicle/slipstream.gd")
+var slipstream_target := 0.0
+var slipstream_strength := 0.0
+var slipstream_drag_reduction := 0.0
 var downforce_n := 0.0
+var front_downforce_n := 0.0
+var rear_downforce_n := 0.0
+var airspeed_mps := 0.0
+# Road-plane wind components, forward/left. Zero means still air.
+var wind_body_mps := Vector2.ZERO
+# Normal components of world-up rotation of each road-plane basis vector.
+# Set by the player from the contact normal; zero on a flat road.
+var turn_normal_factors := Vector2.ZERO
+var banking_load_n := 0.0
 var heading_change := 0.0
 const RPM_TO_RAD := TAU/60.0
 
@@ -59,6 +72,16 @@ func reset() -> void:
 	heading_change = 0
 	front_usage = 0
 	rear_usage = 0
+	drag_n = 0.0
+	slipstream_target = 0.0
+	slipstream_strength = 0.0
+	slipstream_drag_reduction = 0.0
+	downforce_n = 0.0
+	front_downforce_n = 0.0
+	rear_downforce_n = 0.0
+	airspeed_mps = 0.0
+	banking_load_n = 0.0
+	turn_normal_factors = Vector2.ZERO
 
 func rpm() -> float:
 	return engine_omega/RPM_TO_RAD
@@ -120,14 +143,28 @@ func advance(delta: float, gas: float, brake: float, steering_input: float,
 
 func _integrate(dt: float, gas: float, brake: float, steering_input: float, gx: float, gy: float,
 		gn: float, grounded: bool, grip_scale: float, cap: float) -> void:
+	var tow_target := clampf(slipstream_target,0.0,1.0)
+	var tow_time := Slipstream.BUILD_TIME_S if tow_target > slipstream_strength else Slipstream.RELEASE_TIME_S
+	slipstream_strength = lerpf(slipstream_strength,tow_target,1.0-exp(-dt/tow_time))
+	slipstream_drag_reduction = slipstream_strength*Slipstream.MAX_DRAG_REDUCTION
 	var speed := Vector2(u,v).length()
+	var air_velocity := Vector2(u,v)-wind_body_mps
+	airspeed_mps = air_velocity.length()
 	var lock: float = lerpf(p.steering_lock_deg,p.high_speed_lock_deg,clampf(speed/p.steering_reduction_speed_mps,0,1))
 	var assist: float = p.assistance_strength if grounded else 0.0
 	# Steering input scaling must not jump when road contact briefly drops out.
 	# Airborne cars still have no tyre forces or yaw/sideslip stability intervention.
 	var steering_assist: float = p.assistance_strength
-	var aero_load: float = .5*p.air_density_kg_m3*p.downforce_area_m2*speed*speed
-	var safe_lateral_accel: float = p.friction_coefficient*grip_scale*(gn+aero_load/vehicle_mass_kg)*p.corner_grip_fraction
+	var aero_load: float = .5*p.air_density_kg_m3*p.downforce_area_m2*airspeed_mps*airspeed_mps
+	# Turning the velocity around world up requires normal acceleration on a
+	# banked road. For a level, constant-bank turn this is v²/R * sin(bank).
+	# Use actual yaw, not requested steering, so steering alone cannot add load.
+	var turn_normal_accel := yaw_rate*Vector2(u,v).dot(turn_normal_factors) if grounded else 0.0
+	banking_load_n = vehicle_mass_kg*turn_normal_accel
+	var support_accel := maxf(0.0,gn+turn_normal_accel)
+	var tyre_lateral_accel: float = p.friction_coefficient*grip_scale*(support_accel+aero_load/vehicle_mass_kg)*p.corner_grip_fraction
+	# Gravity on the bank helps the inward turn and opposes the outward turn.
+	var safe_lateral_accel := maxf(0.0,tyre_lateral_accel+gy*signf(steering_input))
 	var safe_lock := rad_to_deg(atan(p.wheelbase_m*safe_lateral_accel/maxf(speed*speed,1)))
 	# Geometric steering alone omits the extra angle needed for tyre slip.
 	safe_lock *= p.steering_range_multiplier
@@ -162,12 +199,14 @@ func _integrate(dt: float, gas: float, brake: float, steering_input: float, gx: 
 		drive_torque = 0.0
 	var b: float = p.wheelbase_m*p.front_weight_fraction
 	var a: float = p.wheelbase_m-b
-	downforce_n = .5*p.air_density_kg_m3*p.downforce_area_m2*speed*speed if grounded else 0.0
-	drag_n = .5*p.air_density_kg_m3*p.drag_area_m2*speed*speed
-	var weight: float = vehicle_mass_kg*gn if grounded else 0.0
+	downforce_n = aero_load if grounded else 0.0
+	front_downforce_n = downforce_n*p.front_downforce_fraction
+	rear_downforce_n = downforce_n-front_downforce_n
+	drag_n = .5*p.air_density_kg_m3*p.drag_area_m2*airspeed_mps*airspeed_mps*(1.0-slipstream_drag_reduction)
+	var weight: float = vehicle_mass_kg*support_accel if grounded else 0.0
 	var transfer: float = clampf(vehicle_mass_kg*acceleration*p.cg_height_m/p.wheelbase_m,-weight*.35,weight*.35)
-	front_load = maxf(0,weight*p.front_weight_fraction+downforce_n*p.front_downforce_fraction-transfer)
-	rear_load = maxf(0,weight*(1-p.front_weight_fraction)+downforce_n*(1-p.front_downforce_fraction)+transfer)
+	front_load = maxf(0,weight*p.front_weight_fraction+front_downforce_n-transfer)
+	rear_load = maxf(0,weight*(1-p.front_weight_fraction)+rear_downforce_n+transfer)
 	var front_lateral := v+a*yaw_rate
 	var front_long := u*cos(steer)+front_lateral*sin(steer)
 	var front_side := front_lateral*cos(steer)-u*sin(steer)
@@ -201,7 +240,7 @@ func _integrate(dt: float, gas: float, brake: float, steering_input: float, gx: 
 	var front_x := front.x*cos(steer)-front.y*sin(steer)
 	var front_y := front.x*sin(steer)+front.y*cos(steer)
 	var rolling: float = p.rolling_resistance*(front_load+rear_load)
-	var resistance := Vector2(u,v)/maxf(speed,.5)*(drag_n+rolling)
+	var resistance := air_velocity/maxf(airspeed_mps,.001)*drag_n+Vector2(u,v)/maxf(speed,.5)*rolling
 	var force_x := front_x+rear.x-resistance.x
 	var force_y := front_y+rear.y-resistance.y
 	var ax: float = force_x/vehicle_mass_kg+gx
@@ -211,8 +250,9 @@ func _integrate(dt: float, gas: float, brake: float, steering_input: float, gx: 
 	yaw_rate += (a*front_y-b*rear.y)/vehicle_yaw_inertia_kgm2*dt
 	if assist > 0:
 		var requested_yaw: float = u*tan(steer)/p.wheelbase_m
-		var yaw_cap: float = safe_lateral_accel/maxf(absf(u),3)
-		requested_yaw = clampf(requested_yaw,-yaw_cap,yaw_cap)
+		var yaw_cap: float = tyre_lateral_accel/maxf(absf(u),3)
+		var gravity_yaw: float = gy*signf(u)/maxf(absf(u),3)
+		requested_yaw = clampf(requested_yaw,minf(0.0,gravity_yaw-yaw_cap),maxf(0.0,gravity_yaw+yaw_cap))
 		yaw_rate = lerpf(yaw_rate,requested_yaw,minf(1,dt*p.yaw_stability_rate_s*assist))
 		v *= exp(-dt*p.sideslip_damping_rate_s*assist)
 		# Stop a saturated rear axle from building into an uncontrolled spin.

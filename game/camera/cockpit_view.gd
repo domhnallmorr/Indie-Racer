@@ -37,6 +37,7 @@ func _ready() -> void:
 			mesh.layers = 16
 	camera = Camera3D.new()
 	camera.name = "DriverEye"
+	camera.doppler_tracking = Camera3D.DOPPLER_TRACKING_IDLE_STEP
 	camera.position = Vector3(0, .84, .28)
 	camera.rotation_degrees.x = -6
 	camera.fov = 65

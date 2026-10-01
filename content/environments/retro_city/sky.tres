@@ -7,6 +7,7 @@
 shader = ExtResource("1")
 shader_parameter/panorama = ExtResource("2")
 shader_parameter/horizon_offset = 0.065
+shader_parameter/skyline_scale = 0.75
 
 [resource]
 sky_material = SubResource("SkyMaterial")

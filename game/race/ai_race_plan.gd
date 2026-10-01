@@ -17,6 +17,7 @@ var stopped_time := 0.0
 var distance := 0.0
 var initial_offset := Vector3.ZERO
 var smoke: CPUParticles3D
+var recovery_visual: Node3D
 
 func configure(driver, seed_value: int) -> void:
 	var strategy_rng := RandomNumberGenerator.new()
@@ -24,6 +25,7 @@ func configure(driver, seed_value: int) -> void:
 	var draw := strategy_rng.randf()
 	extra_range_laps = 0 if draw < .7 else (2 if draw < .9 else 3)
 	var state = driver.car.player_state
+	state.configure_tyre_wear(seed_value)
 	var nominal_range: float = state.fuel_capacity_gal/state.fuel_per_lap_gal
 	state.fuel_per_lap_gal = state.fuel_capacity_gal/(nominal_range+extra_range_laps)
 	var failure_rng := RandomNumberGenerator.new()
@@ -90,6 +92,8 @@ func update(driver, delta: float) -> bool:
 	else:
 		stopped_time += delta
 		if stopped_time >= STOP_DWELL_SECONDS:
+			if is_instance_valid(recovery_visual):
+				recovery_visual.handoff()
 			car.global_transform = driver.pit_box_pose
 			car.reset_dynamics()
 			car.player_state.pit_stall_state = car.player_state.StallState.STOPPED
@@ -127,6 +131,10 @@ func fail(driver, kind: FailureType = FailureType.ENGINE) -> void:
 	var control = driver.practice_session.race_control
 	if control != null:
 		control.call_caution("Engine failure: "+str(car.get_meta("driver_name",car.name)))
+		if control.active():
+			recovery_visual = preload("res://game/race/retirement_recovery_visual.gd").new()
+			car.get_parent().add_child(recovery_visual)
+			recovery_visual.configure(driver)
 
 func failure_name() -> String:
 	return "Other" if failure_type == FailureType.OTHER else "Engine failure"

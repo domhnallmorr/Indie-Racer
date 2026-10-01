@@ -2,7 +2,7 @@
   "schema_version": 1,
   "units": "metres_seconds",
   "tuning": {
-    "passing_speed_factor": 1.02,
+    "passing_speed_factor": 1.0,
     "road_edge_speed_start_m": 7.0,
     "alongside_gap_m": 4.5,
     "room_status_rear_gap_m": 10.0,

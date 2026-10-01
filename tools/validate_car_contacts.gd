@@ -36,6 +36,9 @@ func validate() -> void:
 	for car in cars:
 		car.process_mode = Node.PROCESS_MODE_ALWAYS
 		car.set_physics_process(false)
+		# These are driving fixtures, not cars still parked with pit brakes held.
+		car.player_state.pit_stall_state = car.player_state.StallState.NONE
+		car.player_state.set_engine_running(true)
 		if car.has_node("Driver"):
 			car.get_node("Driver").set_physics_process(false)
 		# The practice spawn now ghosts pit cars. These scenarios explicitly test
@@ -80,7 +83,7 @@ func validate() -> void:
 		check(minimum_speed > 55,scenario+" must preserve racing momentum")
 		check(bounced,scenario+" must separate after impact")
 		check(contacts < 20,scenario+" must not stick together")
-	# A real barrier still removes speed rather than passing through it.
+	# A real barrier rebounds the car while remaining solid.
 	var wall := StaticBody3D.new()
 	var wall_shape := CollisionShape3D.new()
 	var wall_box := BoxShape3D.new()
@@ -91,10 +94,12 @@ func validate() -> void:
 	wall.position = Vector3(0,101,990)
 	for car in cars:
 		place(car,Vector3(0,100.02,1000),Vector3(0,0,-25))
+		var rebounded := false
 		for tick in range(40):
 			await physics_frame
 			step(car)
-		check(car.global_position.z > 992 and absf(car.speed_mps) < 1,"Barrier must stop "+str(car.name))
+			rebounded = rebounded or car.velocity.z > 1.0
+		check(car.global_position.z > 992 and rebounded,"Barrier must rebound and contain "+str(car.name))
 		place(car,Vector3(50,100.02,1100),Vector3.ZERO)
 	main.free()
 	floor_body.free()

@@ -10,7 +10,6 @@ signal fuel_changed
 enum StallState { NONE, STOPPED, SERVICING, RELEASING }
 var pit_stall_state: StallState = StallState.NONE
 var engine_running := true
-var pit_menu_selection := 1
 var car: Node3D
 var session: Node
 var stall_pose := Transform3D.IDENTITY
@@ -32,6 +31,39 @@ const REFUEL_MIN_SECONDS := 10.0
 const REFUEL_MAX_SECONDS := 13.0
 var refuel_rng := RandomNumberGenerator.new()
 
+# Provisional single-set model: linear distance wear, independent of fuel load.
+const TYRE_LIFE_M := 1609.344*100.0
+const WORN_TYRE_GRIP := 0.92
+const WORN_TYRE_PACE_PENALTY_S := 2.0
+var tyre_condition := 1.0
+var tyre_wear_rate := 1.0
+
+func configure_tyre_wear(seed_value: int) -> void:
+	var tyre_rng := RandomNumberGenerator.new()
+	tyre_rng.seed = seed_value ^ 0x71AE
+	tyre_wear_rate = tyre_rng.randf_range(0.85,1.15)
+
+func race_tyres_active() -> bool:
+	return session != null and session.session_type == session.SessionType.RACE
+
+func consume_tyre_distance(distance_m: float) -> void:
+	if not race_tyres_active() or session.status != session.Status.RUNNING:
+		return
+	if not is_finite(distance_m) or distance_m <= 0.0 or not engine_running or is_in_pit_lane:
+		return
+	if pit_stall_state in [StallState.STOPPED,StallState.SERVICING]:
+		return
+	tyre_condition = clampf(tyre_condition-distance_m/TYRE_LIFE_M*tyre_wear_rate,0.0,1.0)
+
+func tyre_grip_multiplier() -> float:
+	return lerpf(WORN_TYRE_GRIP,1.0,tyre_condition) if race_tyres_active() else 1.0
+
+func tyre_pace_penalty_s() -> float:
+	return (1.0-tyre_condition)*WORN_TYRE_PACE_PENALTY_S if race_tyres_active() else 0.0
+
+func replace_tyres() -> void:
+	tyre_condition = 1.0
+
 func configure_fuel(values: Dictionary, capacity_override: float = 0.0) -> void:
 	fuel_capacity_gal = values.fuel_capacity_gal
 	fuel_density_kg_l = values.fuel_density_kg_l
@@ -52,6 +84,7 @@ func set_selected_fuel(delta_gal: float) -> void:
 	fuel_changed.emit()
 
 func consume_distance(distance_m: float) -> void:
+	consume_tyre_distance(distance_m)
 	if not engine_running or distance_m <= 0.0 or fuel_gal <= 0.0:
 		return
 	var burn_per_m := fuel_per_lap_gal/fuel_reference_lap_m*fuel_burn_factor
@@ -94,6 +127,7 @@ func _physics_process(delta: float) -> void:
 		fuel_gal = lerpf(service_initial_fuel,fuel_capacity_gal,1.0-service_remaining/service_duration_seconds)
 		fuel_changed.emit()
 		if service_remaining == 0.0 and session.status == session.Status.RUNNING:
+			replace_tyres()
 			selected_fuel_gal = fuel_capacity_gal
 			pit_stall_state = StallState.STOPPED
 			request_departure()
@@ -130,9 +164,10 @@ func park_in_stall() -> void:
 	car.reset_dynamics()
 	speed_mps = 0.0
 	pit_stall_state = StallState.STOPPED
-	pit_menu_selection = 1
 	stopped_seconds = 0.0
 	set_engine_running(false)
+	# Restore the setup load on each practice/qualifying arrival.
+	set_selected_fuel(0.0)
 	pit_stall_changed.emit()
 
 func set_engine_running(value: bool) -> void:
@@ -147,26 +182,6 @@ func request_departure() -> bool:
 	set_engine_running(true)
 	pit_stall_changed.emit()
 	return true
-
-func _unhandled_input(event: InputEvent) -> void:
-	if car == null or not car.human_controlled or not car.driving_enabled or pit_stall_state != StallState.STOPPED:
-		return
-	if not event is InputEventKey or not event.pressed or event.echo:
-		return
-	match event.keycode:
-		KEY_UP: pit_menu_selection = maxi(0,pit_menu_selection-1)
-		KEY_DOWN: pit_menu_selection = mini(2,pit_menu_selection+1)
-		KEY_LEFT:
-			if pit_menu_selection == 1:
-				set_selected_fuel(-FUEL_STEP_GAL)
-		KEY_RIGHT:
-			if pit_menu_selection == 1:
-				set_selected_fuel(FUEL_STEP_GAL)
-		KEY_ENTER, KEY_KP_ENTER:
-			if pit_menu_selection == 2:
-				request_departure()
-		_: return
-	get_viewport().set_input_as_handled()
 
 func set_in_pit_lane(value: bool) -> void:
 	if value == is_in_pit_lane:

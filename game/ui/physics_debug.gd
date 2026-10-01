@@ -36,4 +36,9 @@ func _process(delta: float) -> void:
 		return
 	refresh_time = 0
 	var sim = player.sim
+	var impact: Dictionary = player.last_wall_impact
 	label.text = "PLAYER PHYSICS\n\n%s  %s  |  %.0f RPM  |  %s\nFuel %.1f gal / %.1f L   mass %.0f kg\nForward %.1f / lateral %.1f m/s   yaw %.1f °/s\nSlip angle F %.1f° / R %.1f°   steer %.1f°\nWheel slip F %.0f%% / R %.0f%%\nGrip usage F %.0f%% / R %.0f%%\nAxle load F %.0f / R %.0f N\nDownforce %.0f N   drag %.0f N   clutch %.0f%%\n\nPlayer telemetry: %s (F11)" % ["AUTO" if sim.automatic else "MANUAL",player.gear_text,player.engine_rpm,player.surface_name,player.player_state.fuel_gal,player.player_state.fuel_litres(),sim.vehicle_mass_kg,sim.u,sim.v,rad_to_deg(sim.yaw_rate),rad_to_deg(sim.front_slip_angle),rad_to_deg(sim.rear_slip_angle),rad_to_deg(sim.steer),sim.front_slip_ratio*100,sim.rear_slip_ratio*100,sim.front_usage*100,sim.rear_usage*100,sim.front_load,sim.rear_load,sim.downforce_n,sim.drag_n,sim.clutch*100,"RECORDING" if player.telemetry.file != null else "off"]
+	label.text += "\nLast wall hit: %.1f m/s into wall | %.1f kJ" % [impact.get("closing_speed_mps",0.0),float(impact.get("normal_energy_j",0.0))/1000.0]
+	label.text += "\n\nAERO  %s  |  wings F %.2f° / R %.2f°\nAirspeed %.1f km/h  |  front balance %.1f%%\nAero load F %.0f / R %.0f N\nDrag area %.3f m²  |  downforce area %.3f m²" % [sim.p.body_package,sim.p.front_wing_deg,sim.p.rear_wing_deg,sim.airspeed_mps*3.6,sim.p.front_downforce_fraction*100.0,sim.front_downforce_n,sim.rear_downforce_n,sim.p.drag_area_m2,sim.p.downforce_area_m2]
+	label.text += "\nBanking contribution to tyre load: %+.0f N" % sim.banking_load_n
+	label.text += "\nTow %.0f%%  |  drag reduction %.1f%%" % [sim.slipstream_strength*100.0,sim.slipstream_drag_reduction*100.0]

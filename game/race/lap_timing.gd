@@ -6,10 +6,10 @@ var clock := 0.0
 var track: Node3D
 var session: Node
 
-func configure(track_node: Node3D, session_node: Node, vehicles: Array) -> void:
+func configure(track_node: Node3D, session_node: Node, vehicles: Array, gates_file: String = "res://content/tracks/mile_oval/ai/timing_gates.json") -> void:
 	track = track_node
 	session = session_node
-	var data = JSON.parse_string(FileAccess.get_file_as_string("res://content/tracks/mile_oval/ai/timing_gates.json"))
+	var data = JSON.parse_string(FileAccess.get_file_as_string(gates_file))
 	gates = data.gates
 	for car in vehicles:
 		entries.append({"car": car, "name": "Player" if car.name == "DisplayCar" else str(car.get_meta("driver_name",String(car.name).replace("AI_", "AI "))),
@@ -46,7 +46,7 @@ func sample(entry: Dictionary, position: Vector3, from_time: float, to_time: flo
 		# T1/T2. Accept the same ordered timing planes on its authored pavement.
 		# Bound the extension so the opposite side's plane cannot reset this lap.
 		var race_pit_crossing: bool = absf(lateral) <= 50.0 and session != null and session.session_type == session.SessionType.RACE and entry.car.track_data.contains_pit_lane(crossing)
-		if (absf(lateral) > gate.half_width_m and not race_pit_crossing) or crossing.y < -1 or crossing.y > 6:
+		if (absf(lateral) > gate.half_width_m and not race_pit_crossing) or crossing.y < gate.get("min_height_m",-1) or crossing.y > gate.get("max_height_m",6):
 			continue
 		if backward:
 			entry.armed = false

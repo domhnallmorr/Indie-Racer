@@ -27,6 +27,9 @@ func capture() -> void:
 	camera.position = track.global_position + Vector3(-200,100,30)
 	camera.look_at(track.global_position + Vector3(-330,4,0))
 	await save_view("turn3_hoardings_shifted")
+	camera.position = track.global_position + Vector3(-430,65,-170)
+	camera.look_at(track.global_position + Vector3(-295,3,-100))
+	await save_view("turn3_boundary_extension")
 	print("BACKSTRAIGHT CHECK PASSED: bank height, utility setback, 200 m billboard shift, three views rendered.")
 	quit()
 func save_view(label: String) -> void:

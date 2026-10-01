@@ -6,6 +6,9 @@ const START := -88.0
 const END := STRAIGHT + 198.0
 
 func _ready() -> void:
+	_build_fence(START, END)
+
+func _build_fence(start: float, end: float, closed: bool = false) -> void:
 	var steel := StandardMaterial3D.new()
 	steel.albedo_color = Color("737c80")
 	steel.metallic = 0.55
@@ -18,14 +21,17 @@ func _ready() -> void:
 	var mesh := SurfaceTool.new()
 	mesh.begin(Mesh.PRIMITIVE_TRIANGLES)
 	mesh.set_material(wire)
-	var bays := ceili((END - START) / 4.0)
+	var bays := ceili((end - start) / 4.0)
 	for i in range(bays + 1):
-		var s := lerpf(START, END, float(i) / bays)
+		# The closing bay already meets the first post on a complete circuit.
+		if closed and i == bays:
+			continue
+		var s := lerpf(start, end, float(i) / bays)
 		_beam(frame, _point(s, 0), _point(s, 2.8), 0.065)
 		_beam(frame, _point(s, 2.8), _point(s, 4.0), 0.065)
 		if i == bays:
 			continue
-		var next := lerpf(START, END, float(i + 1) / bays)
+		var next := lerpf(start, end, float(i + 1) / bays)
 		for height in [0.12, 2.8, 4.0]:
 			_beam(frame, _point(s, height), _point(next, height), 0.025)
 		# Subdivide each bay so the mesh follows the curved wall closely.

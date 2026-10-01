@@ -2,6 +2,8 @@ shader_type spatial;
 
 uniform mat4 world_to_track;
 uniform bool outer_wall = false;
+// Other track layouts can supply distance along the wall and height in UV.
+uniform bool use_wall_uv = false;
 uniform vec4 concrete_color : source_color = vec4(0.57, 0.545, 0.50, 1.0);
 uniform vec4 paint_color : source_color = vec4(0.94, 0.935, 0.915, 1.0);
 uniform float block_width_m : hint_range(6.0, 7.0) = 6.5;
@@ -62,13 +64,18 @@ void fragment() {
 	float perimeter = 2.0*straight+TAU*radius;
 	float spacing = perimeter/round(perimeter/block_width_m);
 	vec2 p = vec2(wall_s, track_position.y);
+	if (use_wall_uv) {
+		wall_s = UV.x;
+		spacing = block_width_m;
+		p = UV;
+	}
 	float footprint = max(length(dFdx(p)), length(dFdy(p)));
 	float grain = mix(noise(p*65.0), .5, smoothstep(.01, .07, footprint));
 	float mottling = noise(p*vec2(.6, 2.0))-.5;
 	vec3 base = outer_wall ? paint_color.rgb : concrete_color.rgb;
 	base *= 1.0+mottling*.085+(grain-.5)*.07;
 	float side = 1.0-smoothstep(.3, .8, abs(normalize(track_normal).y));
-	float dirt = 1.0-smoothstep(.03, .35, track_position.y);
+	float dirt = 1.0-smoothstep(.03, .35, p.y);
 	base *= 1.0-dirt*.12;
 	if (!outer_wall) {
 		float block = floor(wall_s/spacing);

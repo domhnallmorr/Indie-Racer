@@ -19,9 +19,12 @@ var nearby: Array[Dictionary] = []
 var own := Vector2.ZERO
 var enabled := false
 var lane_change_blocked := false
+var lane_clear_seconds := 0.0
+const LANE_RESUME_CLEAR_S := .35
+var edge_entry_speed_mps := INF
 const TUNING_PATH := "res://content/racecraft.json"
 const TUNING_DEFAULTS := {
-	"passing_speed_factor": 1.02,
+	"passing_speed_factor": 1.0,
 	"road_edge_speed_start_m": 7.0,
 	"alongside_gap_m": 4.5,
 	"room_status_rear_gap_m": 10.0,
@@ -44,7 +47,7 @@ const TUNING_DEFAULTS := {
 }
 ## Shared defaults are loaded from content/racecraft.json. A track can supply
 ## individual overrides through its ai/racecraft.json file.
-var passing_speed_factor := 1.02
+var passing_speed_factor := 1.0
 var road_edge_speed_start_m := 7.0
 var alongside_gap_m := 4.5
 var room_status_rear_gap_m := 10.0
@@ -181,6 +184,9 @@ func begin_green_launch(formation_lane: float, lateral_m: float = NAN, grid_row:
 	green_launch_lane = clampf(formation_lane,-1.0,1.0)
 	target_lane = green_launch_lane
 	lane = green_launch_lane
+	lane_change_blocked = false
+	lane_clear_seconds = 0.0
+	edge_entry_speed_mps = INF
 	launch_weight = 1.0 if is_finite(lateral_m) else 0.0
 	launch_lateral_m = lateral_m if is_finite(lateral_m) else 0.0
 	# Keep each two-car row together, with a small cumulative release delay for
@@ -212,8 +218,8 @@ func track_lane_point(driver, distance: float, lateral_m: float) -> Vector3:
 	return low.lerp(high,clampf((lateral_m+8.0)/16.0,0.0,1.0))
 
 func speed_factor() -> float:
-	# Apply the tow only to the attacking car. A leader moving aside to leave
-	# room also uses an alternate groove but must not receive the same benefit.
+	# Neutral by default: committing to a pass must not create extra pace.
+	# Retain the tuning hook for explicit track overrides, not a simulated tow.
 	var commitment := maxf(absf(lane),absf(target_lane)) if opponent != null else 0.0
 	return lerpf(1.0,passing_speed_factor,commitment)
 
@@ -376,11 +382,12 @@ func update(driver, delta: float) -> void:
 				# commands a defensive lane change before overlap.
 				if opponent == null:
 					state = "alongside" if absf(other.gap) < alongside_gap_m else "leaving_room"
-	# Begin a pass early enough to establish lateral clearance before catching.
+	# Prefer an early pass, but also let a traffic-limited car leave a close
+	# queue. Lane checks must verify enough room to pull out at the current gap.
 	if opponent == null and state == "clear" and cooldown_s <= 0:
 		var leader: Dictionary = {}
 		for other in nearby:
-			if other.gap > passing_commit_min_gap_m and other.gap < passing_commit_max_gap_m and absf(other.lateral-own.y) < 5:
+			if other.gap > 0 and other.gap < passing_commit_max_gap_m and absf(other.lateral-own.y) < 5:
 				if leader.is_empty() or other.gap < leader.gap:
 					leader = other
 		if not leader.is_empty():
@@ -390,6 +397,8 @@ func update(driver, delta: float) -> void:
 			if closing_speed > closing_speed_mps:
 				var preferred := -1.0 if leader.lateral > 0 else 1.0
 				for candidate in [preferred,-preferred]:
+					if leader.gap <= passing_commit_min_gap_m and not _close_pull_out_clear(driver,candidate,lane_lateral(driver,candidate,0),leader):
+						continue
 					if lane_clear(driver,candidate,leader.car):
 						desired = candidate
 						opponent = leader.car
@@ -404,10 +413,17 @@ func update(driver, delta: float) -> void:
 		desired = target_lane
 		state = "holding_lane"
 	target_lane = desired
-	# Use the configured full-blend distance; preview uses the same transition.
-	# Recheck an in-progress move too: a player or another passer can occupy
-	# its swept corridor after the initial commitment.
-	lane_change_blocked = not is_equal_approx(lane,target_lane) and not lane_clear(driver,target_lane,opponent)
+	# Stop immediately if the swept corridor becomes occupied. Resume only
+	# after sustained clearance, rather than restarting at every threshold flicker.
+	if not is_equal_approx(lane,target_lane) and not lane_clear(driver,target_lane,opponent):
+		lane_change_blocked = true
+		lane_clear_seconds = 0.0
+	elif lane_change_blocked and not is_equal_approx(lane,target_lane):
+		lane_clear_seconds += delta
+		lane_change_blocked = lane_clear_seconds < LANE_RESUME_CLEAR_S
+	else:
+		lane_change_blocked = false
+		lane_clear_seconds = 0.0
 	if lane_change_blocked:
 		state = "holding_lane"
 	else:
@@ -462,8 +478,27 @@ func lane_clear(driver, candidate: float, ignored: Node3D = null) -> bool:
 		var future: float = other.gap+(other.car.speed_mps-driver.car.speed_mps)*2.0
 		if minf(other.gap,future) < 24 and maxf(other.gap,future) > -24:
 			if other.lateral > minf(own.y,destination)-3.2 and other.lateral < maxf(own.y,destination)+3.2:
-				return false
+				# A same-line leader is ahead of the manoeuvre, not alongside it.
+				# Check this exception only for cars that would otherwise block.
+				if not _close_pull_out_clear(driver,candidate,destination,other):
+					return false
 	return true
+
+func _close_pull_out_clear(driver, candidate: float, destination: float, other: Dictionary) -> bool:
+	var minimum_gap := alongside_gap_m+2.0
+	if other.gap <= minimum_gap or absf(destination-own.y) < .01:
+		return false
+	var direction := signf(destination-own.y)
+	# Never cross a car already between us and the destination, or merge into
+	# an occupied destination. Allow only a car on the lane we are leaving.
+	if (other.lateral-own.y)*direction > 1.0 or absf(other.lateral-destination) < 3.2:
+		return false
+	var other_driver = other.car.get_node_or_null("Driver")
+	if other_driver != null and absf(other_driver.racecraft.target_lane-candidate) < .25:
+		return false
+	var transition_time := maxf(.25,absf(candidate-lane)*lane_blend_distance_m/maxf(driver.car.speed_mps,8.0))
+	var closing_speed := maxf(0.0,driver.car.speed_mps-other.car.speed_mps)
+	return other.gap-closing_speed*transition_time > minimum_gap
 
 func lane_lateral(driver, choice: float, distance: float) -> float:
 	var at: float = fposmod(driver.race_distances[driver.index]+distance,driver.race_length_m)
@@ -484,8 +519,10 @@ func path_point(driver, distance: float, choice: float) -> Vector3:
 func ahead(driver, distance: float) -> Vector3:
 	if not enabled or driver.mode != 2:
 		return driver._ahead(distance)
-	var preview := lane if lane_change_blocked else move_toward(lane,target_lane,maxf(0,distance)/lane_blend_distance_m)
-	var point := path_point(driver,distance,preview)
+	# Sample the committed blend consistently along the preview. Predicting a
+	# future blend from target_lane moved the aim point metres in one tick when
+	# a move started, stopped or resumed, even though lane itself was continuous.
+	var point := path_point(driver,distance,lane)
 	if launch_weight > 0.0:
 		point = point.lerp(track_lane_point(driver,distance,launch_lateral_m),launch_weight)
 	return _leave_side_room(driver,distance,point)
@@ -498,16 +535,24 @@ func _leave_side_room(driver, distance: float, point: Vector3) -> Vector3:
 	var maximum := 8.0
 	var alongside := false
 	for other in nearby:
-		if absf(other.gap) >= 9.0:
+		if absf(other.gap) >= 18.0:
 			continue
 		var side: float = own.y-other.lateral
-		if absf(side) < 1.0:
-			continue # Nose-to-tail traffic belongs to the longitudinal guard.
+		if absf(side) < .001:
+			continue # Exactly nose-to-tail traffic belongs to the longitudinal guard.
 		alongside = true
+		# Keep the full clearance throughout overlap and release it continuously
+		# over the next nine metres; crossing the old 9 m gate must not snap the
+		# steering target back to RACE or create a false tracking-error slowdown.
+		# A rear/forward neighbour becoming aligned must release continuously too.
+		# The former 1 m lateral cutoff could erase several metres of protection
+		# in one tick. Retain the full original constraint from 1 m separation,
+		# and progressively introduce it before that threshold is reached.
+		var weight := (1.0-smoothstep(9.0,18.0,absf(other.gap)))*smoothstep(0.0,1.0,absf(side))
 		if side > 0:
-			minimum = maxf(minimum,other.lateral+3.2)
+			minimum = maxf(minimum,lerpf(-8.0,other.lateral+3.2,weight))
 		else:
-			maximum = minf(maximum,other.lateral-3.2)
+			maximum = minf(maximum,lerpf(8.0,other.lateral-3.2,weight))
 	if not alongside:
 		return point
 	var at: float = fposmod(driver.race_distances[driver.index]+distance,driver.race_length_m)
@@ -550,7 +595,7 @@ func planner_samples(driver, count: int) -> PackedVector3Array:
 		var next := (low+1)%points.size()
 		var fraction := clampf((at-distances[low])/maxf(distances[low+1]-distances[low],.001),0,1)
 		var point := points[low].lerp(points[next],fraction)
-		var choice := lane if lane_change_blocked else move_toward(lane,target_lane,maxf(0,distance)/lane_blend_distance_m)
+		var choice := lane
 		if absf(choice) >= .0001:
 			var alternative := inside[low].lerp(inside[next],fraction) if choice < 0 else outside[low].lerp(outside[next],fraction)
 			point = point.lerp(alternative,absf(choice))
@@ -561,9 +606,21 @@ func planner_samples(driver, count: int) -> PackedVector3Array:
 func traffic_speed(driver, request: float) -> float:
 	# A legal target does not guarantee the body stays on it. Shed speed early
 	# when tracking error consumes the road-edge reserve, retaining lane priority.
+	if absf(own.y) <= road_edge_speed_start_m-.15:
+		edge_entry_speed_mps = INF
 	if absf(own.y) > road_edge_speed_start_m:
-		request = minf(request,maxf(15,driver.car.speed_mps)*clampf(1.0-(absf(own.y)-road_edge_speed_start_m)*.15,.65,1.0))
-		driver.traffic_reason = "road_edge"
+		if not is_finite(edge_entry_speed_mps):
+			edge_entry_speed_mps = maxf(15.0,minf(request,driver.car.speed_mps))
+		# Anchor the cap to entry speed. Multiplying the current speed every
+		# tick caused maximum braking throughout even a 10 cm tracking overshoot.
+		var edge_cap := edge_entry_speed_mps*clampf(1.0-(absf(own.y)-road_edge_speed_start_m)*.15,.65,1.0)
+		# A genuine departure beyond the car-centre road limit still needs a
+		# strong recovery response, independent of the small-overshoot correction.
+		if absf(own.y) > 9.0:
+			edge_cap = minf(edge_cap,maxf(15.0,edge_entry_speed_mps*.35))
+		if edge_cap < request:
+			request = edge_cap
+			driver.traffic_reason = "road_edge"
 	if green_launch_row_delay_remaining_s > 0.0 or green_launch_acceleration_remaining_s > 0.0:
 		request = minf(request,green_launch_speed_cap_mps)
 	if green_launch_guard_remaining_s > 0:

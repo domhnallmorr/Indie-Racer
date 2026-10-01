@@ -58,8 +58,8 @@ and [Open Wheel 95](docs/open_wheel.md) for Blender workflows and dimensions.
 [Player bicycle physics](docs/player_physics.md) now supplies tyre slip, aero and
 six-speed gearing from separate CFG files. W accelerates, S brakes, V selects reverse
 while stopped; Q/E shift and M toggles automatic shifting. Press 8 for physics debug.
-The player has a synthesized V8 engine tone driven by physics RPM and throttle,
-so neutral revving, shifts and limiter behaviour are audible in every camera.
+Cars use sampled V8 power/coast banks driven by physics RPM and throttle, with
+separate cockpit and spatial exterior mixes. See [engine audio](docs/audio.md).
 Adjust `EngineAudio.engine_volume_db` in the player vehicle scene to change its volume.
 The [two AI opponents](docs/ai.md) retain their basic controller. They leave assigned
 pit boxes, respect the limiter and join the racing line; keys 6/7 follow them.
@@ -72,6 +72,11 @@ See [the content guide](docs/content_packages.md). The included `mile_oval` is a
 importable track; `open_wheel` contains the prototype car. Adding another folder and valid
 manifest under the appropriate content directory registers it on the next startup
 or `ContentCatalog.refresh()` call; no central list needs editing.
+
+[Texas Tri-Oval](content/tracks/texas/README.md) is also selectable in Race Weekend.
+It uses the supplied ICR2 Texas layout and AI lines, scaled to 1.5 miles with
+20°/24° banking and smooth 280 m transitions extending onto the straights. Its scenery and AI pace calibration
+are provisional.
 
 Next milestone: tune player handling, then adapt the AI to the new physics before
 developing side-by-side behaviour and passing.

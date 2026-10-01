@@ -1,6 +1,6 @@
 @tool
 extends Node3D
-## Ten shared, solid 3D tree meshes; deterministic sparse urban planting.
+## Ten shared branching trees with alpha-cut leaf sprays; deterministic planting.
 const STRAIGHT := (1609.344 - TAU * 125.0) / 2.0
 const ARC := PI * 125.0
 const TREE_NAMES := ["BroadOak","TallElm","RoundMaple","YoungMaple","SlenderPoplar","SpreadingAsh","SmallOrnamental","UnevenLocust","TallCottonwood","CompactLinden"]
@@ -71,15 +71,25 @@ func make_tree(index: int) -> ArrayMesh:
 	var wood := SurfaceTool.new()
 	wood.begin(Mesh.PRIMITIVE_TRIANGLES)
 	wood.set_material(bark)
-	_branch(wood,Vector3.ZERO,Vector3(0,height*0.72,0),height*0.024,height*0.008)
+	var fork := Vector3(width*.025,height*.34,-width*.018)
+	_branch(wood,Vector3.ZERO,fork,height*.021,height*.013)
+	_branch(wood,fork,Vector3(-width*.035,height*.78,width*.025),height*.013,.045)
+	for root in range(5):
+		var angle := root * TAU / 5.0
+		_branch(wood,Vector3(cos(angle)*height*.04,.08,sin(angle)*height*.04),Vector3(0,height*.1,0),.04,height*.015)
 	var leaves := SurfaceTool.new()
 	leaves.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var foliage := StandardMaterial3D.new()
 	foliage.vertex_color_use_as_albedo = true
+	foliage.albedo_texture = preload("res://content/tracks/mile_oval/trees/leaf_spray.svg")
+	foliage.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
+	foliage.alpha_scissor_threshold = .12
+	foliage.cull_mode = BaseMaterial3D.CULL_DISABLED
+	foliage.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	foliage.roughness = 1.0
 	foliage.set_flag(BaseMaterial3D.FLAG_DISABLE_AMBIENT_LIGHT,false)
 	leaves.set_material(foliage)
-	# Overlapping irregular crowns leave visible forks and varied silhouettes.
+	# Branch fans carry many small sprays, leaving porous, irregular silhouettes.
 	for lobe in range(11):
 		var angle := float(lobe)*2.39996+rng.randf_range(-0.2,0.2)
 		var ring := 0.0 if lobe==10 else rng.randf_range(0.20,0.34)*width
@@ -90,8 +100,14 @@ func make_tree(index: int) -> ArrayMesh:
 		if index==4:
 			center.x *= 0.65
 			center.z *= 0.65
-		_branch(wood,Vector3(0,height*0.34,0),center,height*0.009,0.035)
-		_crown(leaves,center,size,COLORS[index].srgb_to_linear(),rng)
+		var elbow := fork.lerp(center,.6) + Vector3(0,-height*.06,0)
+		_branch(wood,fork,elbow,height*.009,height*.004)
+		_branch(wood,elbow,center,height*.004,.018)
+		for twig in range(5):
+			var tip := center + Vector3(rng.randf_range(-.7,.7),rng.randf_range(-.2,.6),rng.randf_range(-.7,.7))*size
+			_branch(wood,elbow,tip,.035,.008)
+		var tint := Color.WHITE.lerp(COLORS[index],.22).srgb_to_linear()
+		_crown(leaves,center,size,tint,rng)
 	var mesh := wood.commit()
 	leaves.commit(mesh)
 	return mesh
@@ -110,18 +126,22 @@ func _branch(surface: SurfaceTool, a: Vector3, b: Vector3, bottom: float, top: f
 	surface.append_from(mesh,0,Transform3D(basis,(a+b)*0.5))
 
 func _crown(surface: SurfaceTool, center: Vector3, size: Vector3, color: Color, rng: RandomNumberGenerator) -> void:
-	var sphere := SphereMesh.new()
-	sphere.radius = 1.0
-	sphere.height = 2.0
-	sphere.radial_segments = 9
-	sphere.rings = 5
-	var arrays := sphere.surface_get_arrays(0)
-	var vertices: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
-	var indices: PackedInt32Array = arrays[Mesh.ARRAY_INDEX]
-	for i in range(0,indices.size(),3):
-		var tone := rng.randf_range(0.86,1.12)
-		for j in range(3):
-			var v := vertices[indices[i+j]]
+	for spray in range(100):
+		var direction := Vector3(rng.randf_range(-1,1),rng.randf_range(-1,1),rng.randf_range(-1,1)).normalized()
+		var offset := direction * pow(rng.randf(), .3333) * size
+		var pos := center + offset
+		var basis := Basis.from_euler(Vector3(rng.randf_range(-PI,PI),rng.randf_range(-PI,PI),rng.randf_range(-PI,PI)))
+		var scale_factor := rng.randf_range(.85,1.55) * clampf(size.x/2.5,.65,1.2)
+		var right := basis.x * scale_factor * .5
+		var up := basis.y * scale_factor * .5
+		var tone := rng.randf_range(.8,1.13) * lerpf(.8,1.0,clampf(offset.y/size.y*.5+.5,0,1))
+		# Crown-oriented normals give soft foliage lighting instead of obvious cards.
+		var normal := (direction + Vector3.UP*.5).normalized()
+		var corners := [pos-right-up,pos+right-up,pos+right+up,pos-right+up]
+		var uvs := [Vector2(0,1),Vector2(1,1),Vector2(1,0),Vector2(0,0)]
+		for vertex in [0,2,1,0,3,2]:
 			surface.set_color(Color(color.r*tone,color.g*tone,color.b*tone))
-			surface.set_normal((v/size).normalized())
-			surface.add_vertex(center+v*size)
+			surface.set_normal(normal)
+			surface.set_uv(uvs[vertex])
+			surface.add_vertex(corners[vertex])
+

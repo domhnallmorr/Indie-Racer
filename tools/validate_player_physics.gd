@@ -41,10 +41,12 @@ func validate() -> void:
 		car.drive_step(DT,1,0,0)
 	check(car.track.to_local(car.global_position).x > 195 and car.speed_mps > 80.0/3.6+.2,"Exit releases player limiter")
 	place(car,Vector3(0,.025,130),PI,15)
+	var wall_rebound := false
 	for i in range(120):
 		await physics_frame
 		car.drive_step(DT,1,0,0)
-	check(car.track.to_local(car.global_position).z < 136 and absf(car.speed_mps) < 1,"Wall stops dynamic player")
+		wall_rebound = wall_rebound or car.velocity.z < -1.0
+	check(car.track.to_local(car.global_position).z < 136 and wall_rebound,"Wall contains and rebounds dynamic player")
 	for backwards in [false,true]:
 		place(car,Vector3(198,.025,91),0.0 if backwards else PI)
 		if backwards:

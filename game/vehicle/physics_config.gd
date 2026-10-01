@@ -8,7 +8,7 @@ const NUMERIC = {
 	"tires": ["front_radius_m","rear_radius_m","front_cornering_stiffness_n_rad","rear_cornering_stiffness_n_rad","longitudinal_stiffness_n","reference_load_n","load_stiffness_exponent","friction_coefficient","grass_grip_multiplier","rolling_resistance","front_axle_inertia_kgm2","rear_axle_inertia_kgm2","slip_reference_speed_mps"],
 	"engine": ["idle_rpm","redline_rpm","inertia_kgm2","throttle_rate_s","idle_control_gain","idle_control_max_nm"],
 	"gearbox": ["reverse_ratio","final_drive","efficiency","shift_time_s","automatic_upshift_rpm","automatic_downshift_rpm","launch_rpm","clutch_capacity_nm","clutch_stiffness_nm_s","clutch_engagement_rate_s","direction_change_max_mps","reverse_limit_kph"],
-	"aero": ["air_density_kg_m3","drag_area_m2","downforce_area_m2","front_downforce_fraction"]
+	"aero": ["air_density_kg_m3","front_wing_deg","rear_wing_deg","coefficient_area_scale"]
 }
 
 func load_directory(directory: String) -> bool:
@@ -38,8 +38,16 @@ func load_components(files: Dictionary) -> bool:
 			values["torque_curve"] = config.get_value(section,"torque_curve",[])
 		if section == "gearbox":
 			values["forward_ratios"] = config.get_value(section,"forward_ratios",[])
+		if section == "aero":
+			values["body_package"] = config.get_value(section,"body_package","")
+			if values.body_package not in ["road","speedway"]:
+				errors.append("Aero body_package must be road or speedway")
 	if not errors.is_empty():
 		return false
+	for key in ["front_wing_deg","rear_wing_deg"]:
+		if values[key] < 3.0 or values[key] > 18.0:
+			errors.append(key+" must be between 3 and 18 degrees")
+	preload("res://game/vehicle/aero_model.gd").apply(values,values.body_package,values.front_wing_deg,values.rear_wing_deg)
 	for key in values:
 		if values[key] is float and values[key] == 0 and key not in ["assistance_strength","cg_height_m","surface_step_m","drag_area_m2","downforce_area_m2","rolling_resistance"]:
 			errors.append(key+" must be positive")

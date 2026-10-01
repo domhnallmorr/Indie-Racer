@@ -18,6 +18,11 @@ var grid_heading_deg := 90.0
 var grid_row_spacing_m := 8.0
 var grid_lane_spacing_m := 5.0
 var green_point := Vector3(-250.0,0.0,125.0)
+var green_normal := Vector3.RIGHT
+var path_based_pits := false
+var reference_paths_file := "res://content/tracks/mile_oval/ai/reference_paths.json"
+var limiter_pose := Transform3D.IDENTITY
+var circuit_length_m := 1609.344
 const PIT_SECTION_SEGMENTS := 20
 
 func load_config(path: String) -> Error:
@@ -29,6 +34,8 @@ func load_config(path: String) -> Error:
 	var data = JSON.parse_string(FileAccess.get_file_as_string(path))
 	if not data is Dictionary or data.get("schema_version") != 1 or data.get("units") != "metres":
 		return ERR_INVALID_DATA
+	path_based_pits = bool(data.get("path_based_pits",false))
+	reference_paths_file = path.get_base_dir()+"/ai/reference_paths.json"
 	var race: Variant = data.get("race",{})
 	if not race is Dictionary:
 		return ERR_INVALID_DATA
@@ -47,6 +54,8 @@ func load_config(path: String) -> Error:
 		grid_row_spacing_m = float(grid.row_spacing_m)
 		grid_lane_spacing_m = float(grid.lane_spacing_m)
 		green_point = Vector3(race.green_point[0],race.green_point[1],race.green_point[2])
+		if _numbers(race.get("green_normal"),3):
+			green_normal = Vector3(race.green_normal[0],race.green_normal[1],race.green_normal[2]).normalized()
 	var boxes = data.get("pit_boxes")
 	var lane = data.get("pit_lane")
 	if not boxes is Array or boxes.is_empty() or not lane is Dictionary:
@@ -69,6 +78,7 @@ func load_config(path: String) -> Error:
 	var paths = JSON.parse_string(FileAccess.get_file_as_string(path.get_base_dir().path_join(relative)))
 	if not paths is Dictionary or not paths.get("pit_path") is Array or paths.pit_path.size() < 2:
 		return ERR_INVALID_DATA
+	circuit_length_m = float(paths.get("reference_length_m",1609.344))
 	for point in paths.pit_path:
 		if not _numbers(point, 3):
 			return ERR_INVALID_DATA
@@ -95,6 +105,11 @@ func load_config(path: String) -> Error:
 		return ERR_INVALID_DATA
 	speed_limit_kph = speed.limit_kph
 	speed_exit_x = speed.exit_line_x
+	if path_based_pits:
+		var pose: Dictionary = speed.get("exit_pose",{})
+		if not _numbers(pose.get("position"),3) or not _number(pose.get("heading_deg")):
+			return ERR_INVALID_DATA
+		limiter_pose = Transform3D(Basis(Vector3.UP,deg_to_rad(pose.heading_deg)),Vector3(pose.position[0],pose.position[1],pose.position[2]))
 	for point in speed.polygon_xz:
 		if not _numbers(point, 2):
 			return ERR_INVALID_DATA
@@ -107,6 +122,27 @@ func load_config(path: String) -> Error:
 			bounds = bounds.expand(Vector2(pit_path[i].x,pit_path[i].z))
 		pit_sections.append(bounds.grow(half_width+.001))
 	return OK
+
+func in_green_zone(p: Vector3) -> bool:
+	if not path_based_pits:
+		return p.x >= green_point.x and p.z > 100.0
+	var offset := p-green_point
+	return offset.dot(green_normal) >= 0 and offset.dot(green_normal) < 180 and absf(offset.dot(green_normal.cross(Vector3.UP))) < 45
+
+func nearest_pit_index(p: Vector3) -> int:
+	var best := 0
+	for i in range(1,pit_path.size()):
+		if p.distance_squared_to(pit_path[i]) < p.distance_squared_to(pit_path[best]):
+			best = i
+	return best
+
+func pit_approach_index(p: Vector3, before_m: float = 35.0) -> int:
+	var at := nearest_pit_index(p)
+	var distance := 0.0
+	while at > 0 and distance < before_m:
+		distance += pit_path[at].distance_to(pit_path[at-1])
+		at -= 1
+	return at
 
 func contains_speed_limit_zone(local_position: Vector3) -> bool:
 	return Geometry2D.is_point_in_polygon(Vector2(local_position.x, local_position.z), speed_zone) and contains_pit_lane(local_position)

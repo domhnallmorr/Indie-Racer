@@ -47,6 +47,9 @@ func validate() -> void:
 	var race_direction: Vector3 = (driver.race[driver.route_join_index+1]-driver.race[driver.route_join_index]).normalized()
 	assert(join_direction.dot(race_direction) > .999, "Exit must join race direction smoothly")
 	player.speed_mps = 0
+	# Following is exercised outside the ghosted pit-exit phase.
+	driver.car_ghost = false
+	player.set_meta("pit_ghost",false)
 	car.rotation.y = -PI/2
 	player.global_position = car.global_position + car.global_basis * Vector3(0,0,-8)
 	assert(driver._traffic_speed(30) < 1, "Slow behind close car")

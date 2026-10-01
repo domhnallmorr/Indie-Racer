@@ -1,0 +1,39 @@
+[gd_scene load_steps=10 format=3]
+
+[ext_resource type="Script" path="res://content/tracks/texas/track.gd" id="1"]
+[ext_resource type="Script" path="res://content/tracks/texas/grandstand.gd" id="2"]
+[ext_resource type="Script" path="res://content/tracks/texas/inner_wall.gd" id="3"]
+[ext_resource type="Script" path="res://content/tracks/texas/catchfence.gd" id="4"]
+[ext_resource type="Script" path="res://content/tracks/texas/pit_stations.gd" id="5"]
+[ext_resource type="Script" path="res://content/tracks/texas/backstretch_grandstand.gd" id="6"]
+[ext_resource type="Script" path="res://content/tracks/texas/turn2_building.gd" id="7"]
+[ext_resource type="Script" path="res://content/tracks/texas/infield.gd" id="8"]
+[ext_resource type="Script" path="res://content/tracks/texas/floodlights.gd" id="9"]
+
+[node name="Texas" type="Node3D"]
+script = ExtResource("1")
+
+[node name="FrontstretchGrandstand" type="Node3D" parent="."]
+script = ExtResource("2")
+
+[node name="InnerWall" type="Node3D" parent="."]
+script = ExtResource("3")
+
+[node name="CatchFence" type="Node3D" parent="."]
+script = ExtResource("4")
+
+[node name="PitStations" type="Node3D" parent="."]
+script = ExtResource("5")
+
+[node name="BackstretchGrandstand" type="Node3D" parent="."]
+script = ExtResource("6")
+
+[node name="Turn2Building" type="Node3D" parent="."]
+script = ExtResource("7")
+
+[node name="InfieldSurfaces" type="Node3D" parent="."]
+script = ExtResource("8")
+
+[node name="FloodlightStructures" type="Node3D" parent="."]
+script = ExtResource("9")
+

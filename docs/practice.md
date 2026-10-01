@@ -35,10 +35,15 @@ The old PlayerSpawn marker in the track scene is not used for practice.
 
 ## Runtime state
 
-Practice cars start parked with their engines off. The cockpit LCD shows Tyres,
-Fuel, and Leave Pits, with Fuel selected initially. Up/down selects a row and
-left/right selects a 5–35 US-gallon fuel load; Enter on Leave Pits starts the
-engine and enables driving. Fuel is live for the player: the 35-gallon tank holds
+Practice cars start parked with their engines off. In cockpit view, press Enter
+or click the physical pit monitor to open its close-up. Choose Edit Car Setup,
+then Wings to adjust the wings and body package, or Fuel Load to select a
+5–35 US-gallon load. Each return to your stall in practice or qualifying restores
+the selected fuel load automatically. Return to Cockpit closes the monitor.
+Go to Track clears the monitor, starts the engine and enables driving. Escape
+backs out one menu level at a time, then closes the monitor. The same controls are available in
+qualifying; the LCD retains driving instruments and race refuelling progress.
+Fuel is live for the player: the 35-gallon tank holds
 132.5 L of methanol-equivalent fuel, adding up to 105 kg to the 700 kg dry chassis.
 It burns continuously with distance at a nominal 60 green-flag laps per full tank.
 Session panels take priority over the pit menu. After session expiry, departure

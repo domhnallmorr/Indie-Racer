@@ -16,6 +16,12 @@ status distance, blend distance, commitment/abandonment limits, overlap handling
 road-edge reserve, collision guard, and the passing-speed factor. All values use
 metres or seconds.
 
+The passing-speed factor is neutral (`1.0`), including the built-in fallback.
+Committing to an overtake does not increase the AI's target pace in corners or
+on straights. Passes rely on the existing driver pace difference and lane
+selection; abandoning an attempt no longer removes an artificial speed bonus.
+This factor remains available for explicit track tuning, but is not drafting.
+
 `green_launch_guard_delay_s` suspends only the close-range collision guard for the
 opening launch from formation. `green_launch_lane_hold_s` keeps each car in its
 formation row for a minimum duration. Formation and launch use fixed lateral
@@ -74,9 +80,11 @@ vehicles without a racing index use an exact spatially indexed projection. Resul
 for unchanged positions are cached; see [performance](performance.md). Cars outside the racing
 surface band are excluded, while pit-exit driving retains its existing controls.
 
-An approaching faster car can select an inside or outside attempt 20-110 metres
-behind a leader. Relative speed or the existing cornering capability difference
-provides the motivation. Lane checks inspect present and two-second projected
+An approaching faster car normally selects an inside or outside attempt 25–40
+metres behind a leader. A car already following inside that window may also pull
+out when its unguarded requested pace exceeds the leader's speed. The closest
+leader is considered first, so a further car cannot hide a nearer obstruction.
+Lane checks inspect present and two-second projected
 longitudinal gaps and the lateral space the manoeuvre crosses. A leading AI holds
 its established groove while an attacker uses a clearly separated passing groove.
 This avoids an early defensive pull to the inside and requires the attacker to
@@ -90,6 +98,23 @@ A centre-line follower behind a car does not block that car from moving away int
 clear passing groove. A rear car blocks the move only when it already occupies, or
 has committed to, that same destination groove. This prevents single-file queues
 from becoming a lane-change deadlock.
+
+A close same-line leader does not block moving away into a clear passing groove.
+The projected longitudinal gap must remain above the bumper-overlap threshold
+plus 2 m throughout the remaining lane blend. A car crossing the swept path,
+occupying the destination or already committed to it still blocks the move.
+The longitudinal collision guard remains active until lateral clearance exists.
+This allows a faster car to escape the 9 m following equilibrium without cutting
+through its leader or a neighbouring car. No artificial passing speed is added.
+
+Texas's passing grooves are 7.6 m apart within the existing 16 m car-centre
+corridor. The former 5.2 m spacing could leave both grooves less than the 3.2 m
+clearance requirement from RACE, preventing a follower from making a usable move.
+The clean-air racing line, track width and speed profiles are unchanged.
+`tools/validate_close_following.gd -- --live` exercises a close three-car queue,
+safe pull-out, occupied/crossing lanes, fast closure and a completed live pass.
+Run `tools/validate_texas_racecraft.gd` with `--headless --fixed-fps 60` for the
+18-car formation and opening minute, checking passes, contacts and road bounds.
 
 A pass completes after the opponent falls 22 metres behind, with a two-second
 minimum commitment. An attempt without overlap aborts if the opponent gets 110
