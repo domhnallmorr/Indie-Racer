@@ -23,9 +23,11 @@ var path_based_pits := false
 var reference_paths_file := "res://content/tracks/mile_oval/ai/reference_paths.json"
 var limiter_pose := Transform3D.IDENTITY
 var circuit_length_m := 1609.344
+var _grid_road: Array = []
 const PIT_SECTION_SEGMENTS := 20
 
 func load_config(path: String) -> Error:
+	_grid_road.clear()
 	pit_boxes.clear()
 	pit_path.clear()
 	pit_box_area.clear()
@@ -121,6 +123,16 @@ func load_config(path: String) -> Error:
 		for i in range(first+1,mini(first+PIT_SECTION_SEGMENTS+1,pit_path.size())):
 			bounds = bounds.expand(Vector2(pit_path[i].x,pit_path[i].z))
 		pit_sections.append(bounds.grow(half_width+.001))
+	# Generated tracks carry the same sampled road used by rendering/collision.
+	# Read it before spawning; physics ray queries are not ready during _ready.
+	var geometry_file := path.get_base_dir().path_join("geometry.json")
+	if FileAccess.file_exists(geometry_file):
+		var geometry = JSON.parse_string(FileAccess.get_file_as_string(geometry_file))
+		if geometry is Dictionary:
+			for strip in geometry.get("strips",[]):
+				if strip.get("name","") == "RacingSurface":
+					_grid_road = strip.rows
+					break
 	return OK
 
 func in_green_zone(p: Vector3) -> bool:
@@ -158,7 +170,35 @@ func grid_transform(index: int) -> Transform3D:
 	var right := basis.x
 	var row := index / 2
 	var side := -0.5 if index % 2 == 0 else 0.5
-	return Transform3D(basis,grid_origin-forward*row*grid_row_spacing_m+right*side*grid_lane_spacing_m)
+	var position := grid_origin-forward*row*grid_row_spacing_m+right*side*grid_lane_spacing_m
+	if not _grid_road.is_empty():
+		# Physics bodies stay upright. Clear the uphill edge of the 1.85 x 4.35 m
+		# chassis, then let the existing tyre-grounding code settle the visual.
+		var height := -INF
+		for x in [-1.0,1.0]:
+			for z in [-2.3,2.3]:
+				height = maxf(height,_grid_surface_height(position+basis*Vector3(x,0,z)))
+		if is_finite(height): position.y = height+.025
+	return Transform3D(basis,position)
+
+func _grid_surface_height(p: Vector3) -> float:
+	var point := Vector2(p.x,p.z)
+	for i in range(_grid_road.size()-1):
+		var row: Array = _grid_road[i]
+		var next: Array = _grid_road[i+1]
+		var bounds := Rect2(Vector2(row[0][0],row[0][2]),Vector2.ZERO)
+		for corner in [row[-1],next[0],next[-1]]:
+			bounds = bounds.expand(Vector2(corner[0],corner[2]))
+		if not bounds.grow(.001).has_point(point): continue
+		for j in range(row.size()-1):
+			for triangle in [[row[j],next[j+1],next[j]],[row[j],row[j+1],next[j+1]]]:
+				var a := Vector3(triangle[0][0],triangle[0][1],triangle[0][2])
+				var b := Vector3(triangle[1][0],triangle[1][1],triangle[1][2])
+				var c := Vector3(triangle[2][0],triangle[2][1],triangle[2][2])
+				if Geometry2D.is_point_in_polygon(point,PackedVector2Array([Vector2(a.x,a.z),Vector2(b.x,b.z),Vector2(c.x,c.z)])):
+					var normal := (b-a).cross(c-a)
+					return a.y-(normal.x*(p.x-a.x)+normal.z*(p.z-a.z))/normal.y
+	return -INF
 
 func contains_pit_lane(local_position: Vector3) -> bool:
 	if local_position.y < min_height or local_position.y > max_height:

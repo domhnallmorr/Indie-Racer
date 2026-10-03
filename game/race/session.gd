@@ -10,6 +10,7 @@ var session_type: SessionType = SessionType.PRACTICE
 var status: Status = Status.NOT_STARTED
 var remaining_seconds := 0.0
 var race_control: Node
+var incident_mode := "everyone"
 
 func start_practice() -> void:
 	session_type = SessionType.PRACTICE

@@ -51,6 +51,21 @@ func validate() -> void:
 	# Every vertex, segment boundary, and lap seam; also exercise racing hints.
 	var other = main.ai_cars[1]
 	var other_driver = other.get_node("Driver")
+	# Observers share the configured corridor, but cars can move and change
+	# their index/mode between two observers' queries in the same physics tick.
+	driver.racecraft.projection_cache["shared_probe"] = true
+	if not other_driver.racecraft.projection_cache.has("shared_probe"):
+		failures.append("Session drivers did not share their projection cache")
+	driver.racecraft.projection_cache.erase("shared_probe")
+	for i in range(120):
+		other_driver.index = (i*17)%driver.race.size()
+		other_driver.mode = 2 if i%2 == 0 else 1
+		other.global_position = driver.car.track.to_global(driver.race[other_driver.index]+Vector3(1,0,2))
+		compare(driver,other)
+		compare(other_driver,other)
+		other.global_position += Vector3(.4,0,-.3)
+		compare(other_driver,other)
+		compare(driver,other)
 	for i in range(driver.race.size()):
 		main.player.global_position = driver.car.track.to_global(driver.race[i])
 		compare(driver,main.player)
@@ -65,6 +80,10 @@ func validate() -> void:
 	driver.racecraft.configure(data,driver.race)
 	if not driver.racecraft.projection_cache.is_empty():
 		failures.append("Reconfigure retained cached vehicle coordinates")
+	other_driver.racecraft.projection_cache["shared_probe"] = true
+	if driver.racecraft.projection_cache.has("shared_probe"):
+		failures.append("Reconfigure did not detach from the old corridor cache")
+	other_driver.racecraft.projection_cache.erase("shared_probe")
 	compare(driver,other)
 	for failure in failures.slice(0,5):
 		push_error(failure)

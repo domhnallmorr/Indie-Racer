@@ -39,7 +39,7 @@ func validate() -> void:
 			crossed = true
 			crossing_kph = car.speed_mps*3.6
 			crossing_s = at.x
-			check(at.x > 1180,"Entered racing surface before halfway down backstretch")
+			check(at.x > 1100,"Entered racing surface before the backstraight merge corridor")
 			check(crossing_kph > 280,"Insufficient acceleration before entering track")
 		if driver.mode == driver.Mode.RACING:
 			break
@@ -74,7 +74,10 @@ func validate() -> void:
 			first = i
 			break
 	var enter_time: float = (driver.route_distances[first]-driver.route_distances[driver.index])/40.0
-	other.global_position = car.track.to_global(driver.route[-1]+heading*((driver.route[first]-driver.route[-1]).dot(heading)-100*enter_time))
+	# Place traffic by race arc distance, matching the predictor on this curved
+	# backstraight; tangent projection is not an accurate racing-lane position.
+	var traffic_s: float = driver.race_distances[driver.route_join_index]+(driver.route[first]-driver.route[-1]).dot(heading)-100*enter_time
+	other.global_position = car.track.to_global(driver._sample_path(driver.race,driver.race_distances,fposmod(traffic_s,driver.race_length_m)))
 	other.speed_mps = 100
 	other_driver.index = 0
 	for i in range(driver.race.size()):

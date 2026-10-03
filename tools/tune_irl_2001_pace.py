@@ -15,8 +15,8 @@ QUALIFYING = {
     'Sharpe': (10, 20.8097), 'Calkins': (11, 20.8352),
     'Cheever': (12, 20.8501), 'Salazar': (13, 20.8547),
     'Dismore': (15, 20.8666), 'McGehee': (16, 20.9064),
-    'Dare': (18, 21.2188), 'Unser': (23, 21.6883),
-    'Hattori': (24, 21.7637),
+    'Dare': (18, 21.2188), 'Fisher': (21, 21.3209), 'Unser': (23, 21.6883),
+    'Hattori': (24, 21.7637), 'Andre': (27, 22.8211),
 }
 FAST_TARGET = 21.2
 FAST_QUALIFYING = QUALIFYING['Hornish'][1]

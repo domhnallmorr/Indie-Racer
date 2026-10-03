@@ -19,6 +19,20 @@ var driver_speed_weighting := "legacy"
 var tow_straight_weights := PackedFloat64Array()
 var tow_pace_weights := PackedFloat64Array()
 var tow_segment_lengths := PackedFloat64Array()
+@export_enum("15 Hz:15", "30 Hz:30", "60 Hz:60") var speed_plan_hz := 60
+@export_enum("15 Hz:15", "30 Hz:30", "60 Hz:60") var steering_plan_hz := 60
+var driving_plan_mode := -1
+var driving_plan_ghost := false
+var cached_profile_speed := 0.0
+var steering_from := 0.0
+var steering_target := 0.0
+var steering_blend_seconds := 0.0
+var driving_curvature := 0.0
+
+func configure_performance(sampled: Dictionary, profile: Dictionary) -> void:
+	super.configure_performance(sampled,profile)
+	speed_plan_hz = int(profile.get("speed_plan_hz",60))
+	steering_plan_hz = int(profile.get("steering_plan_hz",60))
 
 func configure(vehicle: Node3D, race_data: Dictionary, delay: float, record_telemetry: bool = false) -> void:
 	# Parent diagnostic columns describe pedal/tyre controls, so use our own schema.
@@ -84,7 +98,9 @@ func configure(vehicle: Node3D, race_data: Dictionary, delay: float, record_tele
 		DirAccess.make_dir_recursive_absolute("user://telemetry")
 		diagnostic = FileAccess.open("user://telemetry/icr2_"+str(car.name)+"_"+str(Time.get_ticks_msec())+".csv",FileAccess.WRITE)
 		if diagnostic != null:
-			diagnostic.store_line("time_s,mode,index,x_m,y_m,z_m,speed_kph,profile_kph,target_kph,line_error_m,reason,racecraft,lane,target_lane,opponent,passes")
+			# Spread disk flushes across the second, as in the bicycle driver.
+			log_flush_elapsed = posmod(hash(str(car.name)),1000)/1000.0
+			diagnostic.store_line("time_s,mode,index,x_m,y_m,z_m,speed_kph,profile_kph,target_kph,line_error_m,reason,racecraft,lane,target_lane,opponent,passes,grounded,vertical_mps,collisions,floor_normal_x,floor_normal_y,floor_normal_z")
 
 func _physics_process(delta: float) -> void:
 	if car == null or not profile_ready:
@@ -109,17 +125,66 @@ func _physics_process(delta: float) -> void:
 	_update_index(position)
 	if _update_practice_cycle():
 		return
+	_advance_traffic(delta)
+	_update_driving_plan(position,delta)
 	if mode == Mode.FORMATION:
-		var lookahead := clampf(4.0+car.speed_mps*.22,5,22)
-		var formation_target: Vector3 = car.track.to_global(_formation_ahead(lookahead))
+		desired_speed_kph = formation_speed_kph
+		requested_speed = _scheduled_traffic_speed(formation_speed_kph/3.6)
+		car.reference_step(delta,requested_speed,driving_curvature)
+		return
+	profile_speed = cached_profile_speed
+	if mode == Mode.RACING:
+		max_line_error_m = maxf(max_line_error_m,current_line_error)
+	if current_line_error > 3:
+		profile_speed *= clampf(1-(current_line_error-3)*.12,.3,1)
+	desired_speed_kph = profile_speed*3.6
+	requested_speed = _scheduled_traffic_speed(profile_speed)
+	if mode == Mode.PIT_EXIT and not merge_blocker.is_empty():
+		traffic_reason = "merge_yield_"+merge_blocker
+	car.reference_step(delta,requested_speed,driving_curvature)
+	if diagnostic != null:
+		log_elapsed += delta
+		log_flush_elapsed += delta
+		if log_elapsed >= .1:
+			log_elapsed = 0
+			pending_log_rows.append("%f,%d,%d,%f,%f,%f,%f,%f,%f,%f,%s,%s,%f,%f,%s,%d,%d,%f,%d,%f,%f,%f" % [elapsed,mode,index,position.x,position.y,position.z,car.speed_mps*3.6,profile_speed*3.6,requested_speed*3.6,current_line_error,traffic_reason,racecraft.state,racecraft.lane,racecraft.target_lane,str(racecraft.opponent.name) if is_instance_valid(racecraft.opponent) else "",racecraft.passes,int(car.is_on_floor()),car.velocity.y,car.get_slide_collision_count(),car.get_floor_normal().x,car.get_floor_normal().y,car.get_floor_normal().z])
+		if log_flush_elapsed >= 1:
+			_flush_diagnostic()
+			log_flush_elapsed = 0
+
+func _update_driving_plan(position: Vector3, delta: float, physics_tick: int = -1) -> void:
+	var tick := Engine.get_physics_frames() if physics_tick < 0 else physics_tick
+	var changed := driving_plan_mode != int(mode) or driving_plan_ghost != car_ghost
+	# Keep pit entry/exit geometry and merge decisions responsive at full rate.
+	var full_rate := mode not in [Mode.RACING,Mode.FORMATION]
+	if mode == Mode.RACING and (speed_plan_hz < Engine.physics_ticks_per_second or steering_plan_hz < Engine.physics_ticks_per_second) and racecraft != null:
+		# Reuse the traffic snapshot: no extra projections or physics queries.
+		# Close battles need immediate path corrections and speed planning.
+		for other in racecraft.nearby:
+			if absf(other.gap) < 20.0 and absf(other.lateral-racecraft.own.y) < 4.0:
+				full_rate = true
+				break
+	var speed_interval := maxi(1,roundi(float(Engine.physics_ticks_per_second)/maxi(1,speed_plan_hz)))
+	var steering_interval := maxi(1,roundi(float(Engine.physics_ticks_per_second)/maxi(1,steering_plan_hz)))
+	if changed or full_rate or posmod(tick,steering_interval) == posmod(traffic_phase,steering_interval):
+		steering_from = driving_curvature
+		steering_target = _sample_steering_curvature(position)
+		steering_blend_seconds = 0.0
+		if changed or full_rate or steering_interval == 1:
+			steering_from = steering_target
+	if changed or full_rate or posmod(tick,speed_interval) == posmod(traffic_phase,speed_interval):
+		cached_profile_speed = formation_speed_kph/3.6 if mode == Mode.FORMATION else (_pit_entry_speed() if mode == Mode.PIT_ENTRY else (_pit_exit_speed() if mode == Mode.PIT_EXIT else _planned_speed()))
+	steering_blend_seconds += delta
+	driving_curvature = lerpf(steering_from,steering_target,clampf(steering_blend_seconds/(float(steering_interval)/Engine.physics_ticks_per_second),0.0,1.0))
+	driving_plan_mode = int(mode)
+	driving_plan_ghost = car_ghost
+
+func _sample_steering_curvature(position: Vector3) -> float:
+	if mode == Mode.FORMATION:
+		var formation_target: Vector3 = car.track.to_global(_formation_ahead(clampf(4.0+car.speed_mps*.22,5,22)))
 		var formation_offset: Vector3 = car.global_basis.inverse()*(formation_target-car.global_position)
 		formation_offset.y = 0
-		var formation_curvature: float = -2.0*formation_offset.x/maxf(formation_offset.length_squared(),1)
-		desired_speed_kph = formation_speed_kph
-		requested_speed = _traffic_speed(formation_speed_kph/3.6)
-		car.reference_step(delta,requested_speed,formation_curvature)
-		return
-	racecraft.update(self,delta)
+		return -2.0*formation_offset.x/maxf(formation_offset.length_squared(),1)
 	var points := race if mode == Mode.RACING else route
 	var closest := Geometry3D.get_closest_point_to_segment(position,points[index],points[(index+1)%points.size()])
 	var origin_offset := closest.distance_to(points[index])
@@ -134,26 +199,7 @@ func _physics_process(delta: float) -> void:
 	var target: Vector3 = car.track.to_global(target_point)
 	var offset: Vector3 = car.global_basis.inverse()*(target-car.global_position)
 	offset.y = 0
-	var curvature := -2.0*offset.x/maxf(offset.length_squared(),1)
-	profile_speed = _pit_entry_speed() if mode == Mode.PIT_ENTRY else (_pit_exit_speed() if mode == Mode.PIT_EXIT else _planned_speed())
-	if mode == Mode.RACING:
-		max_line_error_m = maxf(max_line_error_m,current_line_error)
-	if current_line_error > 3:
-		profile_speed *= clampf(1-(current_line_error-3)*.12,.3,1)
-	desired_speed_kph = profile_speed*3.6
-	requested_speed = _traffic_speed(profile_speed)
-	if mode == Mode.PIT_EXIT and not merge_blocker.is_empty():
-		traffic_reason = "merge_yield_"+merge_blocker
-	car.reference_step(delta,requested_speed,curvature)
-	if diagnostic != null:
-		log_elapsed += delta
-		log_flush_elapsed += delta
-		if log_elapsed >= .1:
-			log_elapsed = 0
-			diagnostic.store_line("%f,%d,%d,%f,%f,%f,%f,%f,%f,%f,%s,%s,%f,%f,%s,%d" % [elapsed,mode,index,position.x,position.y,position.z,car.speed_mps*3.6,profile_speed*3.6,requested_speed*3.6,current_line_error,traffic_reason,racecraft.state,racecraft.lane,racecraft.target_lane,str(racecraft.opponent.name) if is_instance_valid(racecraft.opponent) else "",racecraft.passes])
-		if log_flush_elapsed >= 1:
-			diagnostic.flush()
-			log_flush_elapsed = 0
+	return -2.0*offset.x/maxf(offset.length_squared(),1)
 
 func _planned_speed() -> float:
 	if mode == Mode.PIT_EXIT:
@@ -232,7 +278,9 @@ func fuel_pace_penalty_s() -> float:
 	return maxf(0.0,car.player_state.fuel_gal)*FUEL_PACE_PENALTY_S_PER_GAL
 
 func target_lap_s() -> float:
-	return base_lap_target_s+fuel_pace_penalty_s()+car.player_state.tyre_pace_penalty_s()
+	# Apply difficulty after driver/fuel/tyre calibration so the straight-line
+	# rating clamp cannot cancel it. The tow braking preview uses this too.
+	return (base_lap_target_s+fuel_pace_penalty_s()+car.player_state.tyre_pace_penalty_s())/strength_speed_scale
 
 func effective_pace_scale() -> float:
 	return reference_lap_s/maxf(.001,target_lap_s())

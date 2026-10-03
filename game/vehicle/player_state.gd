@@ -10,6 +10,10 @@ signal fuel_changed
 enum StallState { NONE, STOPPED, SERVICING, RELEASING }
 var pit_stall_state: StallState = StallState.NONE
 var engine_running := true
+var punctured := false
+var terminal_failure := false
+var incident_name := ""
+var limp_required := false
 var car: Node3D
 var session: Node
 var stall_pose := Transform3D.IDENTITY
@@ -38,16 +42,34 @@ const WORN_TYRE_PACE_PENALTY_S := 2.0
 var tyre_condition := 1.0
 var tyre_wear_rate := 1.0
 
-func configure_tyre_wear(seed_value: int) -> void:
+const TYRE_WEAR_CONFIG := "res://content/vehicles/open_wheel/physics/tyre_wear.cfg"
+
+func configure_tyre_wear(seed_value: int, config_path: String = TYRE_WEAR_CONFIG) -> void:
+	tyre_wear_rate = 1.0
+	var config := ConfigFile.new()
+	if config.load(config_path) != OK:
+		push_warning("Cannot load tyre wear config: " + config_path + "; using baseline wear")
+		return
+	var enabled = config.get_value("variation", "enabled", null)
+	var lower = config.get_value("variation", "min_multiplier", null)
+	var upper = config.get_value("variation", "max_multiplier", null)
+	if not enabled is bool or not (lower is float or lower is int) or not (upper is float or upper is int):
+		push_warning("Invalid tyre wear settings; using baseline wear")
+		return
+	if not is_finite(float(lower)) or not is_finite(float(upper)) or lower <= 0.0 or upper < lower:
+		push_warning("Tyre wear bounds must be finite, positive and ordered; using baseline wear")
+		return
+	if not enabled:
+		return
 	var tyre_rng := RandomNumberGenerator.new()
 	tyre_rng.seed = seed_value ^ 0x71AE
-	tyre_wear_rate = tyre_rng.randf_range(0.85,1.15)
+	tyre_wear_rate = tyre_rng.randf_range(float(lower),float(upper))
 
-func race_tyres_active() -> bool:
-	return session != null and session.session_type == session.SessionType.RACE
+func tyre_wear_active() -> bool:
+	return session != null and session.session_type in [session.SessionType.PRACTICE, session.SessionType.RACE]
 
 func consume_tyre_distance(distance_m: float) -> void:
-	if not race_tyres_active() or session.status != session.Status.RUNNING:
+	if not tyre_wear_active() or session.status != session.Status.RUNNING:
 		return
 	if not is_finite(distance_m) or distance_m <= 0.0 or not engine_running or is_in_pit_lane:
 		return
@@ -56,13 +78,17 @@ func consume_tyre_distance(distance_m: float) -> void:
 	tyre_condition = clampf(tyre_condition-distance_m/TYRE_LIFE_M*tyre_wear_rate,0.0,1.0)
 
 func tyre_grip_multiplier() -> float:
-	return lerpf(WORN_TYRE_GRIP,1.0,tyre_condition) if race_tyres_active() else 1.0
+	return (lerpf(WORN_TYRE_GRIP,1.0,tyre_condition) if tyre_wear_active() else 1.0)*(.65 if punctured else 1.0)
 
 func tyre_pace_penalty_s() -> float:
-	return (1.0-tyre_condition)*WORN_TYRE_PACE_PENALTY_S if race_tyres_active() else 0.0
+	return (1.0-tyre_condition)*WORN_TYRE_PACE_PENALTY_S if tyre_wear_active() else 0.0
 
 func replace_tyres() -> void:
 	tyre_condition = 1.0
+	punctured = false
+	if not terminal_failure:
+		limp_required = false
+		incident_name = ""
 
 func configure_fuel(values: Dictionary, capacity_override: float = 0.0) -> void:
 	fuel_capacity_gal = values.fuel_capacity_gal
@@ -122,6 +148,8 @@ func inside_stall() -> bool:
 func _physics_process(delta: float) -> void:
 	if car == null or session == null:
 		return
+	if car.get_meta("retired",false):
+		return
 	if car.human_controlled and pit_stall_state == StallState.SERVICING:
 		service_remaining = maxf(0.0,service_remaining-delta)
 		fuel_gal = lerpf(service_initial_fuel,fuel_capacity_gal,1.0-service_remaining/service_duration_seconds)
@@ -150,6 +178,13 @@ func _physics_process(delta: float) -> void:
 			if session.session_type == session.SessionType.RACE:
 				car.reset_dynamics()
 				set_engine_running(false)
+				if terminal_failure:
+					pit_stall_state = StallState.STOPPED
+					car.set_meta("retired",true)
+					car.set_meta("withdrawing",false)
+					car.get_parent().lap_timing.retire(car,incident_name)
+					pit_stall_changed.emit()
+					return
 				start_refuelling()
 				stopped_seconds = 0.0
 				pit_stall_changed.emit()
@@ -168,14 +203,19 @@ func park_in_stall() -> void:
 	set_engine_running(false)
 	# Restore the setup load on each practice/qualifying arrival.
 	set_selected_fuel(0.0)
+	replace_tyres()
 	pit_stall_changed.emit()
 
 func set_engine_running(value: bool) -> void:
+	if value and terminal_failure:
+		return
 	engine_running = value
 	if "sim" in car:
 		car.sim.set_engine_running(value)
 
 func request_departure() -> bool:
+	if terminal_failure or car.get_meta("retired",false):
+		return false
 	if pit_stall_state != StallState.STOPPED or session.status != session.Status.RUNNING:
 		return false
 	pit_stall_state = StallState.RELEASING

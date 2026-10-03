@@ -49,21 +49,26 @@ func validate() -> void:
 	craft.lane = 0
 	craft.target_lane = 0
 	craft.own = Vector2(0,craft.lane_lateral(driver,0,0))
-	for scenario in ["stopped","closing","braking"]:
-		var separation := 300.0 if scenario == "stopped" else (65.0 if scenario == "closing" else 18.0)
-		fast.speed_mps = 85.0 if scenario != "braking" else 70.0
-		slow.speed_mps = 0.0 if scenario == "stopped" else (45.0 if scenario == "closing" else 70.0)
-		var minimum_gap := separation
-		for tick in range(900):
-			if scenario == "braking" and tick > 30:
-				slow.speed_mps = maxf(0,slow.speed_mps-18.0*DT)
-			craft.nearby.assign([{"car":slow,"gap":separation,"lateral":craft.own.y}])
-			var request: float = craft.traffic_speed(driver,85)
-			fast.speed_mps = move_toward(fast.speed_mps,request,(fast.acceleration_limit if request > fast.speed_mps else fast.braking_limit)*DT)
-			separation += (slow.speed_mps-fast.speed_mps)*DT
-			minimum_gap = minf(minimum_gap,separation)
-		check(minimum_gap > 4.35,scenario+" must avoid bumper contact")
-		print("AVOIDANCE ",scenario," minimum_gap_m=",minimum_gap)
+	driver.car_ghost = false
+	for interval in [1,2,4]:
+		for phase in range(interval):
+			for scenario in ["stopped","closing","braking"]:
+				var separation := 300.0 if scenario == "stopped" else (65.0 if scenario == "closing" else 18.0)
+				fast.speed_mps = 85.0 if scenario != "braking" else 70.0
+				slow.speed_mps = 0.0 if scenario == "stopped" else (45.0 if scenario == "closing" else 70.0)
+				var minimum_gap := separation
+				driver.traffic_cache_valid = false
+				for tick in range(900):
+					if scenario == "braking" and tick > 30:
+						slow.speed_mps = maxf(0,slow.speed_mps-18.0*DT)
+					driver.traffic_refresh = tick%interval == phase
+					craft.nearby.assign([{"car":slow,"gap":separation,"lateral":craft.own.y}])
+					var request: float = driver._scheduled_traffic_speed(85)
+					fast.speed_mps = move_toward(fast.speed_mps,request,(fast.available_acceleration(fast.speed_mps) if request > fast.speed_mps else fast.braking_limit)*DT)
+					separation += (slow.speed_mps-fast.speed_mps)*DT
+					minimum_gap = minf(minimum_gap,separation)
+				check(minimum_gap > 4.35,scenario+" must avoid bumper contact")
+				print("AVOIDANCE hz=",60/interval," phase=",phase," ",scenario," minimum_gap_m=",minimum_gap)
 	# Occupy the swept path after a pass has already begun.
 	var fixture = load("res://tools/validate_racecraft.gd").new()
 	fixture.place(fast,130,0,65)

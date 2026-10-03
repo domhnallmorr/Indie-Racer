@@ -1,4 +1,4 @@
-[gd_scene load_steps=10 format=3]
+[gd_scene load_steps=13 format=3]
 
 [ext_resource type="Script" path="res://content/tracks/texas/track.gd" id="1"]
 [ext_resource type="Script" path="res://content/tracks/texas/grandstand.gd" id="2"]
@@ -9,6 +9,12 @@
 [ext_resource type="Script" path="res://content/tracks/texas/turn2_building.gd" id="7"]
 [ext_resource type="Script" path="res://content/tracks/texas/infield.gd" id="8"]
 [ext_resource type="Script" path="res://content/tracks/texas/floodlights.gd" id="9"]
+
+[ext_resource type="Script" path="res://content/tracks/texas/paddock.gd" id="10"]
+
+[ext_resource type="Script" path="res://content/tracks/texas/speedway_club.gd" id="11"]
+
+[ext_resource type="Script" path="res://content/tracks/texas/advertising.gd" id="12"]
 
 [node name="Texas" type="Node3D"]
 script = ExtResource("1")
@@ -37,3 +43,12 @@ script = ExtResource("8")
 [node name="FloodlightStructures" type="Node3D" parent="."]
 script = ExtResource("9")
 
+
+[node name="PaddockScenery" type="Node3D" parent="."]
+script = ExtResource("10")
+
+[node name="SpeedwayClub" type="Node3D" parent="."]
+script = ExtResource("11")
+
+[node name="Advertising" type="Node3D" parent="."]
+script = ExtResource("12")

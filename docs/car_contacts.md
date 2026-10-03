@@ -25,6 +25,15 @@ Glancing contact preserves forward momentum instead of treating the other car
 as a stationary wall. Solid barriers use the rebound response described below.
 This is a forgiving prototype response, without damage or impact-induced spin.
 
+When an AI leaves its pit ghost state, car contacts resume only after its actual
+collision shape clears every rival by 5 cm. Both cars retain their collision
+exceptions until then. Restoring contacts during an overlap can let the physics
+engine resolve penetration downwards through the road. This caused Buzz Calkins
+to fall beneath Michigan's backstretch at 266.08 seconds in qualifying (2001 IRL,
+seed 1223052989), then stop under turns 1/2 with the field queued behind him.
+`tools/validate_pit_merge_contacts.gd` checks the overlapping merge, road support,
+and restoration of normal contacts after separation.
+
 ## Wall response and future damage
 
 Wall contacts retain tangential motion, return 25% of the incoming normal speed,

@@ -41,9 +41,9 @@ At each completed lap, consistency chooses a small performance reduction, up to 
 
 The AI telemetry CSV has a companion CFG containing the roster path, actual seed, resolved entry/spec, sampled ratings and track profile. Reproduction assumes unchanged content and matching simulation conditions. Seed support is not a mid-race save system.
 
-AI telemetry is **off by default**. Enable **Record AI telemetry** in F12 and restart practice to record the field, or set the `ai_telemetry_enabled` Inspector export. Player telemetry remains independently controlled by F11. AI rows are sampled at approximately 10 Hz, held in memory, then written/flushed in one-second batches staggered across cars. Normal session shutdown flushes the final partial batch; a crash may lose that final second. Logging-disabled sessions create no AI CSV/CFG files. The bottom-right FPS counter refreshes four times per second using the engine's FPS measurement; it does not write a log.
+AI telemetry is **on by default**. Clear **Record AI telemetry** in F12 and restart practice to disable field recording, or set the `ai_telemetry_enabled` Inspector export. Player telemetry remains independently controlled by F11. AI rows are sampled at approximately 10 Hz, held in memory, then written/flushed in one-second batches staggered across cars. Normal session shutdown flushes the final partial batch; a crash may lose that final second. Logging-disabled sessions create no AI CSV/CFG files. The bottom-right FPS counter refreshes four times per second using the engine's FPS measurement; it does not write a log.
 
-`tools/validate_ai_logging.gd` verifies default-off behaviour, deferred batch writes and final-batch preservation on normal shutdown.
+`tools/validate_ai_logging.gd` verifies default-on behaviour, deferred batch writes and final-batch preservation on normal shutdown.
 
 ## Validation
 

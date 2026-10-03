@@ -153,7 +153,7 @@ theme_override_constants/margin_bottom = 24
 
 [node name="Layout" type="VBoxContainer" parent="Center/WeekendSetup/Panel/Margin"]
 layout_mode = 2
-theme_override_constants/separation = 14
+theme_override_constants/separation = 8
 
 [node name="Heading" type="Label" parent="Center/WeekendSetup/Panel/Margin/Layout"]
 layout_mode = 2
@@ -203,6 +203,39 @@ value = 35.0
 step = 1.0
 rounded = true
 tooltip_text = "Race tank size. 3 gallons gives about 5 laps; a refill takes 10 seconds."
+
+[node name="StrengthRow" type="HBoxContainer" parent="Center/WeekendSetup/Panel/Margin/Layout"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="StrengthLabel" type="Label" parent="Center/WeekendSetup/Panel/Margin/Layout/StrengthRow"]
+custom_minimum_size = Vector2(155, 0)
+layout_mode = 2
+text = "AI STRENGTH: 100"
+
+[node name="StrengthSelect" type="HSlider" parent="Center/WeekendSetup/Panel/Margin/Layout/StrengthRow"]
+custom_minimum_size = Vector2(220, 28)
+layout_mode = 2
+size_flags_horizontal = 3
+min_value = 90.0
+max_value = 120.0
+step = 1.0
+value = 100.0
+tick_count = 7
+tooltip_text = "90–120. 100 is standard pace. Each point changes AI target speed by 0.25%. Applies to practice, qualifying and races."
+
+[node name="IncidentRow" type="HBoxContainer" parent="Center/WeekendSetup/Panel/Margin/Layout"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="IncidentLabel" type="Label" parent="Center/WeekendSetup/Panel/Margin/Layout/IncidentRow"]
+layout_mode = 2
+text = "RACE INCIDENTS"
+
+[node name="IncidentSelect" type="OptionButton" parent="Center/WeekendSetup/Panel/Margin/Layout/IncidentRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+tooltip_text = "Failures, punctures and spins. Off also disables random debris cautions."
 
 [node name="Continue" type="Button" parent="Center/WeekendSetup/Panel/Margin/Layout"]
 layout_mode = 2

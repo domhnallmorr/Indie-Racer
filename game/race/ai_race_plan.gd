@@ -1,15 +1,17 @@
 extends RefCounted
 ## Seeded race-only fuel range and mechanical failures, shared by both AI drivers.
-const RETIREMENT_CHANCE := 0.20
-const OTHER_FAILURE_SHARE := 0.50
+const Rules = preload("res://game/race/incident_rules.gd")
+const RETIREMENT_CHANCE := Rules.EVENT_CHANCE
 const LIMP_SPEED_KPH := 100.0
-enum FailureType { ENGINE, OTHER }
+const FailureType = Rules.Kind
 const STOP_DWELL_SECONDS := 15.0
 var extra_range_laps := 0
 var failure_progress := INF
 var failure_type := FailureType.ENGINE
 var returning := false
 var return_distance := 0.0
+var return_collision_layer := 0
+var return_collision_mask := 0
 var retired := false
 var recovered := false
 var stopping_time := 0.0
@@ -18,6 +20,7 @@ var distance := 0.0
 var initial_offset := Vector3.ZERO
 var smoke: CPUParticles3D
 var recovery_visual: Node3D
+var crash_motion = preload("res://game/race/incident_motion.gd").new()
 
 func configure(driver, seed_value: int) -> void:
 	var strategy_rng := RandomNumberGenerator.new()
@@ -25,36 +28,42 @@ func configure(driver, seed_value: int) -> void:
 	var draw := strategy_rng.randf()
 	extra_range_laps = 0 if draw < .7 else (2 if draw < .9 else 3)
 	var state = driver.car.player_state
-	state.configure_tyre_wear(seed_value)
 	var nominal_range: float = state.fuel_capacity_gal/state.fuel_per_lap_gal
 	state.fuel_per_lap_gal = state.fuel_capacity_gal/(nominal_range+extra_range_laps)
-	var failure_rng := RandomNumberGenerator.new()
-	failure_rng.seed = seed_value ^ 0xFA17
-	if failure_rng.randf() < RETIREMENT_CHANCE:
-		failure_progress = failure_rng.randf_range(.05,.95)*driver.practice_session.race_laps
-	# Separate draw preserves existing failure incidence, timing and fuel plans.
-	var type_rng := RandomNumberGenerator.new()
-	type_rng.seed = seed_value ^ 0x07E2
-	failure_type = FailureType.OTHER if type_rng.randf() < OTHER_FAILURE_SHARE else FailureType.ENGINE
+	var event := Rules.schedule(seed_value,driver.practice_session.race_laps)
+	failure_progress = event.progress
+	failure_type = event.kind
 	driver.car.set_meta("strategy_extra_laps",extra_range_laps)
 
 func update(driver, delta: float) -> bool:
+	if crash_motion.started:
+		crash_motion.update(driver.car,driver.practice_session.race_control,driver.pit_box_pose,delta)
+		recovered = crash_motion.recovered
+		return true
 	if returning:
 		_update_return(driver,delta)
 		return true
 	if not retired:
-		if not is_finite(failure_progress) or driver.practice_session.status != driver.practice_session.Status.RUNNING or driver.mode != driver.Mode.RACING:
+		if not is_finite(failure_progress) or driver.practice_session.status != driver.practice_session.Status.RUNNING:
+			return false
+		var control = driver.practice_session.race_control
+		if driver.practice_session.incident_mode == "off":
+			return false
+		if driver.mode != driver.Mode.RACING:
 			return false
 		var timing = driver.car.get_parent().get("lap_timing")
 		for entry in timing.entries:
 			if entry.car == driver.car and maxf(0.0,(timing._track_progress(entry)-1.0)/timing.gates.size()) >= failure_progress:
-				fail(driver,failure_type)
+				if failure_type != FailureType.CRASH or (control != null and control.scripted_incident_allowed() and control.in_turn(driver.car)):
+					fail(driver,failure_type)
 				break
 		if returning:
 			_update_return(driver,delta)
 			return true
 		if not retired:
 			return false
+		if crash_motion.started:
+			return true
 	if recovered:
 		return true
 	var car = driver.car
@@ -98,15 +107,22 @@ func update(driver, delta: float) -> bool:
 			car.reset_dynamics()
 			car.player_state.pit_stall_state = car.player_state.StallState.STOPPED
 			car.update_zone_state()
-			smoke.emitting = false
+			if is_instance_valid(smoke):
+				smoke.emitting = false
 			recovered = true
 	return true
 
-func fail(driver, kind: FailureType = FailureType.ENGINE) -> void:
+func fail(driver, kind: int = FailureType.ENGINE) -> void:
 	if retired or returning:
 		return
+	var control = driver.practice_session.race_control
+	if kind == FailureType.CRASH and (control == null or not control.scripted_incident_allowed() or not control.in_turn(driver.car)):
+		return
 	failure_type = kind
-	if kind == FailureType.OTHER:
+	failure_progress = INF
+	driver.car.player_state.incident_name = failure_name()
+	if Rules.returns_to_pits(kind):
+		driver.car.player_state.punctured = kind == FailureType.PUNCTURE
 		_begin_return(driver)
 		return
 	retired = true
@@ -117,9 +133,14 @@ func fail(driver, kind: FailureType = FailureType.ENGINE) -> void:
 	car.collision_layer = 0
 	car.collision_mask = 0
 	car.player_state.set_engine_running(false)
+	car.player_state.terminal_failure = true
 	driver.service_started = -1.0
 	var timing = car.get_parent().get("lap_timing")
-	timing.retire(car,"Engine failure")
+	timing.retire(car,failure_name())
+	if kind == FailureType.CRASH:
+		crash_motion.begin(car,control,true)
+		control.call_caution(failure_name()+": "+str(car.get_meta("driver_name",car.name)))
+		return
 	var local: Vector3 = car.track.to_local(car.global_position)
 	# Project onto the current segment to avoid jumping backwards on failure.
 	var a: Vector3 = driver.race[driver.index]
@@ -127,23 +148,25 @@ func fail(driver, kind: FailureType = FailureType.ENGINE) -> void:
 	var fraction := clampf((local-a).dot(b-a)/maxf(a.distance_squared_to(b),.001),0,1)
 	distance = lerpf(driver.race_distances[driver.index],driver.race_distances[driver.index+1],fraction)
 	initial_offset = local-a.lerp(b,fraction)
-	_create_smoke(car)
-	var control = driver.practice_session.race_control
+	if kind == FailureType.ENGINE:
+		_create_smoke(car)
 	if control != null:
-		control.call_caution("Engine failure: "+str(car.get_meta("driver_name",car.name)))
+		control.call_caution(failure_name()+": "+str(car.get_meta("driver_name",car.name)))
 		if control.active():
 			recovery_visual = preload("res://game/race/retirement_recovery_visual.gd").new()
 			car.get_parent().add_child(recovery_visual)
 			recovery_visual.configure(driver)
 
 func failure_name() -> String:
-	return "Other" if failure_type == FailureType.OTHER else "Engine failure"
+	return Rules.NAMES[failure_type]
 
 func _begin_return(driver) -> void:
 	returning = true
 	return_distance = 0.0
 	var car = driver.car
-	car.set_meta("withdrawing",true)
+	return_collision_layer = car.collision_layer
+	return_collision_mask = car.collision_mask
+	car.set_meta("withdrawing",failure_type != FailureType.PUNCTURE)
 	car.set_meta("pit_ghost",true)
 	car.collision_layer = 0
 	car.collision_mask = 0
@@ -193,11 +216,23 @@ func _update_return(driver, delta: float) -> void:
 		car.update_zone_state()
 		driver.mode = driver.Mode.WAITING
 		returning = false
+		if failure_type == FailureType.PUNCTURE:
+			# Retirement returns disable all contacts. A repaired car needs the
+			# road again; normal pit ghosting still excludes nearby cars.
+			car.collision_layer = return_collision_layer
+			car.collision_mask = return_collision_mask
+			driver._update_car_collisions()
+			car.player_state.start_refuelling(driver.cycle_rng.randf_range(10.0,13.0))
+			driver.service_duration_seconds = car.player_state.service_duration_seconds
+			driver.service_start_fuel = car.player_state.service_initial_fuel
+			driver.service_started = driver.elapsed
+			return
 		retired = true
 		recovered = true
 		car.set_meta("withdrawing",false)
 		car.set_meta("retired",true)
-		car.get_parent().lap_timing.retire(car,"Other")
+		car.player_state.terminal_failure = true
+		car.get_parent().lap_timing.retire(car,failure_name())
 
 func _create_smoke(car: Node3D) -> void:
 	smoke = CPUParticles3D.new()

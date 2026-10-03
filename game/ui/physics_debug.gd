@@ -42,3 +42,4 @@ func _process(delta: float) -> void:
 	label.text += "\n\nAERO  %s  |  wings F %.2f° / R %.2f°\nAirspeed %.1f km/h  |  front balance %.1f%%\nAero load F %.0f / R %.0f N\nDrag area %.3f m²  |  downforce area %.3f m²" % [sim.p.body_package,sim.p.front_wing_deg,sim.p.rear_wing_deg,sim.airspeed_mps*3.6,sim.p.front_downforce_fraction*100.0,sim.front_downforce_n,sim.rear_downforce_n,sim.p.drag_area_m2,sim.p.downforce_area_m2]
 	label.text += "\nBanking contribution to tyre load: %+.0f N" % sim.banking_load_n
 	label.text += "\nTow %.0f%%  |  drag reduction %.1f%%" % [sim.slipstream_strength*100.0,sim.slipstream_drag_reduction*100.0]
+	label.text += "\nDirty air %.0f%%  |  downforce loss F %.1f%% / R %.1f%%" % [sim.dirty_air_strength*100.0,sim.dirty_air_strength*sim.Slipstream.MAX_FRONT_DOWNFORCE_LOSS*100.0,sim.dirty_air_strength*sim.Slipstream.MAX_REAR_DOWNFORCE_LOSS*100.0]

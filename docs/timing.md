@@ -1,7 +1,7 @@
 # Practice lap timing
 
 The bottom-right driving panel starts on **Lap Timing**. Click its tabs or use
-**F1** (Lap Timing), **F2** (Standings), and **F3** (Fuel) to change the display
+**F1** (Lap Timing), **F2** (Standings), **F3** (Fuel), and **F4** (Tyres) to change the display
 without interrupting driving. It hides while the full session menu is open and
 remembers the selected page when returning to Drive.
 

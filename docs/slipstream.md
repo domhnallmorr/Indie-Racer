@@ -1,8 +1,9 @@
 # Slipstream
 
 Player and bicycle-physics AI use the same tow calculation. The follower's drag
-is reduced by up to 9%; engine power, airspeed, downforce and aero balance are
-unchanged. Extra speed therefore depends on power, gearing, distance in the tow
+is reduced by up to 9%; engine power and calculated airspeed are unchanged.
+The human player's downforce also falls in dirty air, as described below.
+Extra speed therefore depends on power, gearing, distance in the tow
 and the existing corner/traffic constraints. There is no fixed speed bonus.
 
 Initial gameplay tuning lives in `game/vehicle/slipstream.gd`:
@@ -24,8 +25,20 @@ Initial gameplay tuning lives in `game/vehicle/slipstream.gd`:
 The bicycle AI's existing planner already permits unrestricted speed on clear straights
 and extends braking lookahead with actual speed. Its corner grip, following,
 pit and caution limits remain in force; no tow bonus is added to these limits.
-Downforce still grows normally if the tow increases actual airspeed. There is no
-dirty-air downforce penalty or leader drag benefit in this version.
+Clean-air downforce still grows with actual airspeed. There is no leader drag benefit.
+
+The human player also receives a dirty-air penalty using the same wake geometry,
+speed gates, eligibility and strongest-wake cap. At full strength, front downforce
+falls by 20% and rear downforce by 10%, shifting aero balance rearward to encourage
+understeer. These are initial gameplay values, set independently of drag reduction
+by `MAX_FRONT_DOWNFORCE_LOSS` and `MAX_REAR_DOWNFORCE_LOSS` in `slipstream.gd`.
+Unlike tow, dirty air remains at full longitudinal strength at positive gaps below
+10 m, including close contact; it is zero beside or ahead of the leader. It builds
+with a 0.35 s time constant and releases over 0.25 s. Reset clears both target and
+strength. The reduced axle loads feed tyre forces and the reduced total load feeds
+the steering assistance calculation; mechanical grip is unchanged. AI handling
+is unchanged. Set the player's `dirty_air_enabled` to false to compare clean-air
+handling while retaining tow.
 
 Current ICR2 rosters use reference-speed AI rather than force integration. They
 share the wake geometry, eligibility and drag-reduction smoothing. Their tow
@@ -39,6 +52,8 @@ approximation for that controller; it does not change its clean-air profiles.
 Key 8 shows tow strength and current drag reduction. F11 player telemetry appends
 `slipstream_target`, `slipstream_strength` and `slipstream_drag_reduction` as 0–1
 fractions. These are prototype tuning values, not measured IndyCar wake data.
+The panel also shows dirty-air strength and front/rear downforce loss. Telemetry
+appends `dirty_air_target` and `dirty_air_strength` as 0–1 fractions.
 
 Run `tools/validate_slipstream.gd` headlessly for wake geometry, pack limits,
 player/AI participation, drag/downforce, speed gain, release and reset checks.

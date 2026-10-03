@@ -15,6 +15,9 @@ const RosterData = preload("res://game/race/roster_data.gd")
 @onready var roster_select: OptionButton = $Center/WeekendSetup/Panel/Margin/Layout/RosterSelect
 @onready var laps_select: SpinBox = $Center/WeekendSetup/Panel/Margin/Layout/LapsSelect
 @onready var fuel_select: SpinBox = $Center/WeekendSetup/Panel/Margin/Layout/FuelSelect
+@onready var incident_select: OptionButton = $Center/WeekendSetup/Panel/Margin/Layout/IncidentRow/IncidentSelect
+@onready var strength_select: HSlider = $Center/WeekendSetup/Panel/Margin/Layout/StrengthRow/StrengthSelect
+@onready var strength_label: Label = $Center/WeekendSetup/Panel/Margin/Layout/StrengthRow/StrengthLabel
 @onready var race_summary: Label = $Center/WeekendMenu/Panel/Margin/Layout/Summary
 
 var current_screen := Screen.MAIN
@@ -30,6 +33,13 @@ func _ready() -> void:
 	_populate_tracks()
 	laps_select.value = DEFAULT_LAPS
 	var selection: Dictionary = get_tree().root.get_meta("roster_selection", {})
+	incident_select.add_item("Off")
+	incident_select.add_item("AI only")
+	incident_select.add_item("Everyone")
+	incident_select.select(maxi(0,["off","ai_only","everyone"].find(selection.get("incident_mode","everyone"))))
+	strength_select.value_changed.connect(_on_strength_changed)
+	strength_select.value = selection.get("ai_strength", 100)
+	_on_strength_changed(strength_select.value)
 	_populate_rosters(str(selection.get("file", DEFAULT_ROSTER)))
 	if get_tree().root.get_meta("return_to_weekend", false):
 		get_tree().root.set_meta("return_to_weekend", false)
@@ -93,6 +103,8 @@ func _show_screen(screen: Screen) -> void:
 		race_summary.text = "%s  •  %d laps  •  %d gal tank" % [selected_track_name, int(laps_select.value),int(fuel_select.value)]
 		if roster_select.selected >= 0:
 			race_summary.text += "\n" + roster_select.get_item_text(roster_select.selected)
+		race_summary.text += "\nAI strength: %d" % int(strength_select.value)
+		race_summary.text += "  •  Incidents: "+incident_select.get_item_text(incident_select.selected)
 		var results: Array = get_tree().root.get_meta("roster_selection", {}).get("qualifying_results", [])
 		var result_label: Label = $Center/WeekendMenu/Panel/Margin/Layout/ResultsScroll/Results
 		result_label.text = "QUALIFYING RESULTS\n"
@@ -108,6 +120,9 @@ func _show_screen(screen: Screen) -> void:
 func _on_race_weekend_pressed() -> void:
 	_show_screen(Screen.SETUP)
 
+func _on_strength_changed(value: float) -> void:
+	strength_label.text = "AI STRENGTH: %d" % int(value)
+
 func _on_options_pressed() -> void:
 	_show_screen(Screen.OPTIONS)
 
@@ -119,7 +134,9 @@ func _on_setup_continue_pressed() -> void:
 	if roster_select.selected < 0:
 		return
 	get_tree().root.set_meta("roster_selection", {"file": roster_select.get_item_metadata(roster_select.selected),
-		"track_id":track_select.get_item_metadata(track_select.selected)})
+		"track_id":track_select.get_item_metadata(track_select.selected),
+		"incident_mode":["off","ai_only","everyone"][incident_select.selected],
+		"ai_strength":int(strength_select.value)})
 	selected_track_name = track_select.get_item_text(track_select.selected)
 	_show_screen(Screen.WEEKEND)
 
@@ -137,6 +154,8 @@ func _on_start_session(mode: String) -> void:
 		"session_mode": mode,
 		"race_laps": int(laps_select.value),
 		"max_fuel_capacity_gal": float(fuel_select.value),
+		"ai_strength": int(strength_select.value),
+		"incident_mode": ["off","ai_only","everyone"][incident_select.selected],
 	}, true)
 	if mode == "qualifying":
 		selection.erase("qualifying_grid")

@@ -9,7 +9,7 @@ var ai_profiles: Dictionary = {}
 @export_file("*.json") var track_session_file := "res://content/tracks/mile_oval/session.json"
 var track_data = TrackSessionData.new()
 @export var ai_enabled := true
-@export var ai_telemetry_enabled := false
+@export var ai_telemetry_enabled := true
 var ai_cars: Array[Node3D] = []
 @export var batch_static_visuals := true
 var visual_batches = preload("res://game/render/static_visual_batches.gd").new()
@@ -20,7 +20,9 @@ var player_grid_slot := 0
 var formation_leader: Node3D
 var pace_car: Node3D
 var race_control: Node
+var incidents: Node
 var max_fuel_capacity_gal := 35.0
+var ai_strength := 100
 var green_banner_seconds := 0.0
 @onready var session = $Session
 @onready var player: Node3D = $DisplayCar
@@ -51,11 +53,16 @@ func _ready() -> void:
 	roster_seed = selection.get("seed",roster_seed)
 	ai_telemetry_enabled = selection.get("ai_telemetry",ai_telemetry_enabled)
 	session_mode = str(selection.get("session_mode","practice"))
+	session.incident_mode = str(selection.get("incident_mode","everyone"))
+	if session.incident_mode not in ["off","ai_only","everyone"]:
+		session.incident_mode = "everyone"
 	max_fuel_capacity_gal = clampf(float(selection.get("max_fuel_capacity_gal",35.0)),2.0,35.0)
+	ai_strength = clampi(int(selection.get("ai_strength",100)),90,120)
 	var rng := RandomNumberGenerator.new()
 	rng.randomize()
 	active_seed = rng.randi_range(0,2147483647) if roster_seed < 0 else roster_seed
 	var fps := preload("res://game/ui/fps_counter.gd").new()
+	fps.practice = self
 	fps.name = "FPSCounter"
 	$HUD.add_child(fps)
 	var error: Error = track_data.load_config(track_session_file)
@@ -87,6 +94,7 @@ func _ready() -> void:
 		set_process(false)
 		return
 	player_state.configure_fuel(player.parameters.values,max_fuel_capacity_gal if session_mode == "race" else 0.0)
+	player_state.configure_tyre_wear(active_seed ^ int("player".hash()))
 	player.load_aero_setup(track_session_file)
 	player.load_gearing_setup(track_session_file)
 	_configure_track_fuel(player_state)
@@ -132,6 +140,10 @@ func _ready() -> void:
 	add_child(race_control)
 	race_control.configure(self)
 	session.race_control = race_control
+	incidents = preload("res://game/race/session_incidents.gd").new()
+	incidents.name = "Incidents"
+	add_child(incidents)
+	incidents.configure(self)
 	session.finished.connect(_on_session_finished)
 	_add_race_ui()
 	var pit_monitor := preload("res://game/ui/pit_monitor.gd").new()
@@ -192,6 +204,10 @@ func _return_to_weekend(save_qualifying: bool = false) -> void:
 	get_tree().change_scene_to_file.call_deferred("res://game/main/menu.tscn")
 
 func _add_race_ui() -> void:
+	var spotter_hud := preload("res://game/ui/spotter_hud.gd").new()
+	spotter_hud.name = "Spotter"
+	spotter_hud.practice = self
+	$HUD.add_child(spotter_hud)
 	var black_box := preload("res://game/ui/black_box.gd").new()
 	black_box.name = "BlackBox"
 	black_box.practice = self
@@ -254,6 +270,13 @@ func _update_hud() -> void:
 	var session_name := session_mode.to_upper()
 	$HUD/Panel/Label.text = "%s  •  %s\n%s  •  %s" % [session_name,status_text,location,limiter]
 	$HUD/Panel/Label.modulate = Color("ffcf42") if race_control != null and race_control.active() else Color.WHITE
+	if not player_state.incident_name.is_empty():
+		var advice := "PUNCTURE — SLOW DOWN, PIT FOR TYRES"
+		if player.get_meta("retired",false):
+			advice = "OUT — "+player_state.incident_name.to_upper()
+		elif player_state.terminal_failure:
+			advice = player_state.incident_name.to_upper()+" — RETURN TO PITS TO RETIRE"
+		$HUD/Panel/Label.text += "\n"+advice
 	if session_mode != "race" and player_state.pit_stall_state == player_state.StallState.STOPPED:
 		$HUD/Panel/Label.text += "\nENTER: pit monitor" if player.get_node("Cockpit").active else "\n5: cockpit pit monitor"
 	if not player.get_node("Cockpit").active:
@@ -267,11 +290,11 @@ func _update_hud() -> void:
 		var followed_driver = ai_cars[followed].get_node("Driver")
 		var driver_status: String = ["IN BOX","PIT EXIT","RACING","FORMATION","PIT IN"][followed_driver.mode]
 		if followed_driver.race_plan.returning:
-			driver_status = "RETURNING — OTHER"
+			driver_status = "RETURNING — "+followed_driver.race_plan.failure_name().to_upper()
 		elif followed_driver.race_plan.retired:
 			driver_status = "OUT — "+followed_driver.race_plan.failure_name().to_upper()
 		$HUD/Panel/Label.text += "\nFOLLOWING  %s  •  %s" % [ai_cars[followed].get_meta("driver_name",str(ai_cars[followed].name)),driver_status]
-	$HUD/Panel/Label.text += "\nF12 MENU  •  9 TIMING  •  F1–F3 INFO"
+	$HUD/Panel/Label.text += "\nF12 MENU  •  9 TIMING  •  F1–F4 INFO"
 
 func _load_roster() -> bool:
 	if not roster.load_roster(roster_file):
@@ -296,6 +319,11 @@ func _load_roster() -> bool:
 			if profile.has(key):
 				var value = profile[key]
 				if not (value is float or value is int) or not is_finite(float(value)) or value <= 0 or value > 1:
+					roster.errors.append("Invalid track AI profile: "+key)
+		for key in ["speed_plan_hz","steering_plan_hz"]:
+			if profile.has(key):
+				var value = profile[key]
+				if not (value is int or value is float) or float(value) not in [15.0,30.0,60.0]:
 					roster.errors.append("Invalid track AI profile: "+key)
 	return roster.errors.is_empty()
 
@@ -358,8 +386,12 @@ func _spawn_ai() -> void:
 		driver.set_script(load("res://game/ai/icr2_driver.gd" if use_icr2 else "res://game/ai/oval_driver.gd"))
 		vehicle.add_child(driver)
 		var sampled: Dictionary = roster.sample(entry,active_seed)
+		state.configure_tyre_wear(int(sampled.variation_seed))
 		driver.configure_performance(sampled,ai_profiles[entry.spec.ai_class])
+		driver.configure_strength(ai_strength)
 		driver.configure(vehicle,data,4.0+6.0*(roster.entries.size()-1-roster_index),ai_telemetry_enabled)
+		# Round-robin phases balance traffic work over the shared physics clock.
+		driver.traffic_phase = i
 		if session_mode == "race":
 			driver.configure_race_pits(session,$MileOval.global_transform*track_data.pit_box_transform(i+1))
 			var lane: float = -track_data.grid_lane_spacing_m*.5 if grid_slot%2 == 0 else track_data.grid_lane_spacing_m*.5
@@ -371,13 +403,21 @@ func _spawn_ai() -> void:
 			var metadata := ConfigFile.new()
 			metadata.set_value("roster","file",roster_file)
 			metadata.set_value("roster","seed",active_seed)
+			metadata.set_value("roster","ai_strength",ai_strength)
 			metadata.set_value("driver","entry",entry)
 			metadata.set_value("driver","ratings",sampled)
 			metadata.set_value("driver","track_profile",ai_profiles[entry.spec.ai_class])
 			metadata.save(driver.diagnostic.get_path().get_basename()+".cfg")
 		ai_cars.append(vehicle)
+	# All drivers above use the same race/corridor data and track transform.
+	# Share exact-position projections so a packed field does not project each
+	# opponent again for every observer. Position/index keys still invalidate
+	# results immediately when a car moves or switches between pit/race modes.
+	var traffic_projection_cache := {}
 	for vehicle in ai_cars:
-		vehicle.get_node("Driver").rivals.assign([player] + ai_cars)
+		var driver = vehicle.get_node("Driver")
+		driver.rivals.assign([player] + ai_cars)
+		driver.racecraft.projection_cache = traffic_projection_cache
 
 	for vehicle in ai_cars:
 		vehicle.get_node("Driver")._update_car_collisions()

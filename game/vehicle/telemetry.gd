@@ -22,6 +22,7 @@ func start(player: Node, directory: String = "user://telemetry") -> Error:
 	header += ",banking_load_n"
 	header += ",final_drive,gear_ratio_1,gear_ratio_2,gear_ratio_3,gear_ratio_4,gear_ratio_5,gear_ratio_6"
 	header += ",slipstream_target,slipstream_strength,slipstream_drag_reduction"
+	header += ",dirty_air_target,dirty_air_strength"
 	file.store_csv_line(PackedStringArray(header.split(",")))
 	var metadata := ConfigFile.new()
 	metadata.set_value("run", "physics", player.parameters.values)
@@ -56,6 +57,7 @@ func record(player: Node, delta: float, inputs: Vector3, normal: Vector3, gravit
 	values.append(sim.p.final_drive)
 	values.append_array(sim.p.forward_ratios)
 	values.append_array([sim.slipstream_target,sim.slipstream_strength,sim.slipstream_drag_reduction])
+	values.append_array([sim.dirty_air_target,sim.dirty_air_strength])
 	var row := PackedStringArray()
 	for value in values:
 		row.append(str(value))

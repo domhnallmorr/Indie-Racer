@@ -9,7 +9,7 @@ func validate() -> void:
 	assert(path in roster.discover())
 	assert(roster.load_roster(path), str(roster.errors))
 	assert(roster.data.display_name == "2001 IRL")
-	assert(roster.entries.size() == 18)
+	assert(roster.entries.size() == 20)
 	assert(roster.race_entries()[1].id == "Hornish")
 	assert(roster.race_entries()[2].id == "Lazier")
 	assert(roster.entries[2].driver_name == "Buddy Lazier" and roster.entries[2].number == "91")
@@ -21,7 +21,7 @@ func validate() -> void:
 	main.roster_file = path
 	main.roster_seed = 1234
 	root.add_child(main)
-	assert(main.ai_cars.size() == 18)
+	assert(main.ai_cars.size() == 20)
 	assert(roster.race_entries()[6].id == "Unser")
 	assert(roster.entries[6].driver_name == "Al Unser Jr." and roster.entries[6].number == "3")
 	assert(roster.race_entries()[5].id == "Giaffone")
@@ -50,6 +50,14 @@ func validate() -> void:
 	assert(roster.entries[17].driver_name == "Greg Ray" and roster.entries[17].number == "2")
 	assert(roster.race_entries()[17].id == "GregRay")
 	assert(roster.entries[16].livery != roster.entries[17].livery)
+	assert(roster.entries[18].driver_name == "Sarah Fisher" and roster.entries[18].number == "15")
+	assert(roster.race_entries()[18].id == "Fisher")
+	assert(roster.entries[18].team == "Walker Racing / Kroger")
+	assert(is_equal_approx(roster.entries[18].icr2_lap_s, 22.198473))
+	assert(roster.entries[19].driver_name == "Didier Andr\u00e9" and roster.entries[19].number == "32")
+	assert(roster.race_entries()[19].id == "Andre")
+	assert(roster.entries[19].team == "Galles Racing / PlayStation 2")
+	assert(is_equal_approx(roster.entries[19].icr2_lap_s, 23.760421))
 	var assigned_boxes := {}
 	for entry in roster.entries:
 		var car = main.get_node("AI_"+entry.id)
@@ -68,7 +76,7 @@ func validate() -> void:
 					panels += 1
 		assert(panels == 14)
 	# Check the loaded controllers actually produce distinct, ordered speeds.
-	var pace_order := ["GregRay", "Hornish", "JeffWard", "Lazier", "Boat", "Buhl", "Giaffone", "Sharpe", "Calkins", "Cheever", "Salazar", "Dismore", "McGehee", "Dare", "Unser", "Hattori"]
+	var pace_order := ["GregRay", "Hornish", "JeffWard", "Lazier", "Boat", "Buhl", "Giaffone", "Sharpe", "Calkins", "Cheever", "Salazar", "Dismore", "McGehee", "Dare", "Fisher", "Unser", "Hattori", "Andre"]
 	var previous = null
 	for id in pace_order:
 		# Compare the base calibration without random practice fuel loads.
@@ -92,5 +100,5 @@ func validate() -> void:
 	var original = load("res://content/vehicles/open_wheel/models/open_wheel.glb").instantiate()
 	assert(original.find_child("Nose",true,false).get_active_material(0).albedo_texture != load(roster.entries[1].livery))
 	original.free()
-	print("2001 IRL PASSED: eighteen drivers, race order, 252 painted panels, material isolation and qualifying-relative runtime speed ordering.")
+	print("2001 IRL PASSED: twenty drivers, race order, 280 painted panels, material isolation and qualifying-relative runtime speed ordering.")
 	quit()

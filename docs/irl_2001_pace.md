@@ -15,3 +15,7 @@ These values feed the ICR2 controller's pace scaling; they are not guaranteed me
 Jaques Lazier was subsequently added with the supplied #2 Team Menard livery. He is absent from the Phoenix classification, so Greg Ray’s #2 Team Menard pole time (20.2631 seconds) supplies a same-team-car estimate: 21.0971 seconds. The manifest marks this as a proxy, with no claimed qualifying time or position for Jaques. Existing drivers retain their targets.
 
 Roster correction: Greg Ray now owns the #2 Team Menard entry and its actual Phoenix pole reference. Jaques uses the supplied #99 Sam Schmidt livery. His prior 21.0971-second pace is retained provisionally; it is no longer described as a same-team-car comparison. No other driver pace changed.
+
+Sarah Fisher (#15 Walker Racing / Kroger) is the nineteenth entry. Her Phoenix qualifying time of 21.3209 seconds (21st in the linked classification) gives a 22.198473-second target using the same formula, between Daré and Unser. She is appended to the existing game grid; the grid is not reordered to match Phoenix qualifying.
+
+Didier André (#32 Galles Racing / PlayStation 2) is the twentieth entry. His Phoenix qualifying time of 22.8211 seconds (27th in the linked classification) gives a 23.760421-second target with the existing formula. He is appended to the game grid without changing the other entries.

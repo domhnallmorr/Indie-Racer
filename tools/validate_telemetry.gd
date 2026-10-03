@@ -14,7 +14,7 @@ func run() -> void:
 	player.telemetry.stop()
 	var file := FileAccess.open(player.telemetry.path, FileAccess.READ)
 	var header := file.get_csv_line()
-	for column in ["time_s","drag_n","downforce_n","slipstream_target","slipstream_strength","slipstream_drag_reduction"]:
+	for column in ["time_s","drag_n","downforce_n","slipstream_target","slipstream_strength","slipstream_drag_reduction","dirty_air_target","dirty_air_strength"]:
 		assert(column in header,"Missing telemetry column: "+column)
 	var rows := 0
 	while not file.eof_reached():

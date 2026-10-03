@@ -5,6 +5,8 @@ enum Phase { GREEN, CLOSED, OPEN, ONE_TO_GREEN, RESTART }
 const FUEL_FACTOR := 0.45
 const QUEUE_GAP := 25.0
 const CATCHUP_KPH := 130.0
+const SCRIPTED_INCIDENT_GAP_LAPS := 10.0
+var scripted_incident_until := -INF
 var phase := Phase.GREEN
 var main: Node
 var queue: Array[Node3D] = []
@@ -19,6 +21,7 @@ var reason := ""
 var caution_count := 0
 var previous_green_side := false
 var merging: Dictionary = {}
+var caution_pit_decisions: Dictionary = {}
 
 func configure(scene: Node) -> void:
 	main = scene
@@ -51,6 +54,7 @@ func call_caution(why: String = "Race control") -> bool:
 	last_position.clear()
 	committed.clear()
 	merging.clear()
+	caution_pit_decisions.clear()
 	for entry in main.lap_timing.track_order():
 		if entry.get("retired",false) or entry.car.get_meta("withdrawing",false):
 			continue
@@ -87,10 +91,11 @@ func pits_open() -> bool:
 	return not active() or phase != Phase.CLOSED
 
 func may_service(car: Node3D) -> bool:
-	return pits_open() or committed.has(car) or car.player_state.fuel_gal <= car.player_state.fuel_per_lap_gal
+	return pits_open() or committed.has(car) or car.player_state.punctured or car.player_state.fuel_gal <= car.player_state.fuel_per_lap_gal
 
 func commit_pit(car: Node3D) -> void:
 	committed[car] = true
+	caution_pit_decisions[car] = false
 	queue.erase(car)
 
 func should_pit(driver) -> bool:
@@ -100,10 +105,41 @@ func should_pit(driver) -> bool:
 	var state = driver.car.player_state
 	if state.fuel_gal <= driver.pit_fuel_trigger_gal:
 		return true
-	if not active() or phase != Phase.OPEN:
+	if not active():
 		return false
-	var remaining: int = maxi(0,main.session.race_laps-driver._timed_laps())
-	return state.fuel_gal < state.fuel_capacity_gal*.8 and state.fuel_gal/state.fuel_per_lap_gal < remaining+1
+	return caution_pit_decisions.get(driver.car,false)
+
+static func caution_pit_chance(fuel: float, capacity: float, burn_per_lap: float, remaining: float) -> float:
+	var needed := (maxf(0.0,remaining)+1.0)*burn_per_lap
+	if fuel >= needed:
+		return 0.0
+	if capacity >= needed:
+		return 1.0
+	var fraction := fuel/capacity
+	if fraction >= .7:
+		return 0.0
+	if fraction >= .6:
+		return .15
+	if fraction >= .4:
+		return .30
+	if fraction >= .3:
+		return .50
+	return 1.0
+
+func _plan_caution_pits() -> void:
+	# Snapshot at opening, not at each car's arrival at pit entry. Use the
+	# leader's race distance so lapped cars do not budget extra racing laps.
+	var remaining := maxf(0.0,main.session.race_laps-_race_progress())
+	for car in main.ai_cars:
+		var driver = car.get_node("Driver")
+		if committed.has(car) or driver.race_plan.retired or driver.race_plan.returning:
+			caution_pit_decisions[car] = false
+			continue
+		var state = car.player_state
+		var chance := caution_pit_chance(state.fuel_gal,state.fuel_capacity_gal,state.fuel_per_lap_gal,remaining)
+		var rng := RandomNumberGenerator.new()
+		rng.seed = int(driver.ratings.get("variation_seed",0)) ^ (caution_count*104729) ^ 0xCA0710
+		caution_pit_decisions[car] = chance >= 1.0 or rng.randf() < chance
 
 func _physics_process(delta: float) -> void:
 	if not active():
@@ -129,10 +165,11 @@ func _physics_process(delta: float) -> void:
 	var gathered := _gathered()
 	match phase:
 		Phase.CLOSED:
-			if elapsed >= 15.0 and main.pace_car.caution_picked_up and gathered:
+			if elapsed >= 15.0 and main.pace_car.caution_picked_up and gathered and _pit_opening_safe():
 				phase = Phase.OPEN
 				elapsed = 0.0
 				phase_distance = main.pace_car.caution_distance
+				_plan_caution_pits()
 		Phase.OPEN:
 			if main.pace_car.caution_distance-phase_distance >= length and gathered and not _ai_pitting():
 				phase = Phase.ONE_TO_GREEN
@@ -148,6 +185,30 @@ func _physics_process(delta: float) -> void:
 			if green_side and not previous_green_side and main.pace_car.clear_of_track and gathered:
 				_restart()
 			previous_green_side = green_side
+
+func _pit_opening_safe() -> bool:
+	# Opening while the train straddles a decision window gives the rear cars
+	# a stop one lap before the leaders. Keep every entry window outside the
+	# entire queue, with notice ahead of the leader and clearance behind it.
+	if queue.is_empty():
+		return false
+	var lead_at := position_of(queue[0])
+	var span: float = progress[queue[0]]-progress[queue[-1]]
+	var entry_at := circuit.get_closest_offset(main.track_data.pit_path[0])
+	var ahead := fposmod(entry_at-lead_at,length)
+	if ahead < 100.0 or ahead+span > length-25.0:
+		return false
+	for car in main.ai_cars:
+		var driver = car.get_node("Driver")
+		if not driver.race_pit_cycle:
+			continue
+		entry_at = circuit.get_closest_offset(driver.race[driver.pit_entry_index])
+		var end_at := circuit.get_closest_offset(driver.race[posmod(driver.pit_entry_index+8,driver.race.size())])
+		var window := fposmod(end_at-entry_at,length)
+		ahead = fposmod(entry_at-lead_at,length)
+		if ahead < 100.0 or ahead+span+window > length-25.0:
+			return false
+	return true
 
 func _in_green_zone() -> bool:
 	var p: Vector3 = main.get_node("MileOval").to_local(queue[0].global_position)
@@ -261,7 +322,55 @@ func player_instruction() -> String:
 		label += "\nFOLLOW PACE CAR  •  %.0f km/h" % (target_speed(car)*3.6)
 	return label
 
+func _race_progress() -> float:
+	var leading := 0.0
+	var timing = main.lap_timing
+	for entry in timing.entries:
+		if not entry.get("retired",false):
+			leading = maxf(leading,(timing._track_progress(entry)-1.0)/timing.gates.size())
+	return leading
+
+func scripted_incident_allowed() -> bool:
+	return main.session.status == main.session.Status.RUNNING and not active() and _race_progress() >= scripted_incident_until
+
+func in_turn(car: Node3D) -> bool:
+	var at := position_of(car)
+	var before := circuit.sample_baked(fposmod(at-15.0,length))
+	var point := circuit.sample_baked(at)
+	var after := circuit.sample_baked(fposmod(at+15.0,length))
+	var incoming := Vector2(point.x-before.x,point.z-before.z)
+	var outgoing := Vector2(after.x-point.x,after.z-point.z)
+	return absf(incoming.angle_to(outgoing)) > .025
+
+func incident_edge(at: float, outside: bool) -> Vector3:
+	var point := circuit.sample_baked(at)
+	# Use the authored racing corridor when available, including banking.
+	if not main.ai_cars.is_empty():
+		var driver = main.ai_cars[0].get_node("Driver")
+		if driver.racecraft.enabled:
+			var nearest := 0
+			var fraction := 0.0
+			var best_distance := INF
+			for i in range(driver.race.size()):
+				var next_index: int = (i+1)%driver.race.size()
+				var a: Vector3 = driver.race[i]
+				var b: Vector3 = driver.race[next_index]
+				var t := clampf((point-a).dot(b-a)/maxf(.001,a.distance_squared_to(b)),0,1)
+				var separation := point.distance_squared_to(a.lerp(b,t))
+				if separation < best_distance:
+					best_distance = separation
+					nearest = i
+					fraction = t
+			var next: int = (nearest+1)%driver.race.size()
+			var edge: PackedVector3Array = driver.racecraft.outer if outside else driver.racecraft.inner
+			var result := edge[nearest].lerp(edge[next],fraction)
+			return result if outside else result+(result-point).normalized()*3.0
+	var ahead := circuit.sample_baked(fposmod(at+2.0,length))
+	return point+(ahead-point).normalized().cross(Vector3.UP)*(10.0 if outside else -13.0)
+
 func _restart() -> void:
+	if phase != Phase.GREEN and main.session.status == main.session.Status.RUNNING:
+		scripted_incident_until = _race_progress()+SCRIPTED_INCIDENT_GAP_LAPS
 	phase = Phase.GREEN
 	main.green_banner_seconds = 4.0
 	for car in main.ai_cars:
@@ -272,6 +381,7 @@ func _restart() -> void:
 	queue.clear()
 	committed.clear()
 	merging.clear()
+	caution_pit_decisions.clear()
 
 func _finish() -> void:
 	# A lap-limited race may finish under yellow; no extra green lap is added.

@@ -26,7 +26,9 @@ func capture() -> void:
 	var mcgehee := "--mcgehee" in OS.get_cmdline_user_args()
 	var jaques := "--jaques" in OS.get_cmdline_user_args()
 	var ray := "--ray" in OS.get_cmdline_user_args()
-	var custom_skin := ray or jaques or sharpe or hornish or lazier or boat or salazar or giaffone or unser or cheever or calkins or dare or ward or buhl or hattori or dismore or beechler or mcgehee
+	var fisher := "--fisher" in OS.get_cmdline_user_args()
+	var andre := "--andre" in OS.get_cmdline_user_args()
+	var custom_skin := andre or fisher or ray or jaques or sharpe or hornish or lazier or boat or salazar or giaffone or unser or cheever or calkins or dare or ward or buhl or hattori or dismore or beechler or mcgehee
 	var prefix := "lazier_2001_" if lazier else ("hornish_2001_" if hornish else ("sharpe_2001_" if sharpe else "car_2001_"))
 	if boat:
 		prefix = "boat_2001_"
@@ -58,6 +60,10 @@ func capture() -> void:
 		prefix = "jaques_2001_"
 	if ray:
 		prefix = "ray_2001_"
+	if fisher:
+		prefix = "fisher_2001_"
+	if andre:
+		prefix = "andre_2001_"
 	if custom_skin:
 		var skin := "buddy_lazier_2001.png" if lazier else ("sam_hornish_2001.png" if hornish else "scott_sharpe_2001.png")
 		if boat:
@@ -90,6 +96,10 @@ func capture() -> void:
 			skin = "jaques_lazier_2001.png"
 		if ray:
 			skin = "greg_ray_2001.png"
+		if fisher:
+			skin = "sarah_fisher_2001.png"
+		if andre:
+			skin = "didier_andre_2001.png"
 		assert(preload("res://content/vehicles/open_wheel/liveries/apply_livery.gd").apply(car,load("res://content/vehicles/open_wheel/liveries/"+skin)) == 14)
 	var low := Vector3(INF,INF,INF)
 	var high := Vector3(-INF,-INF,-INF)

@@ -4,6 +4,7 @@ const Model = preload("res://game/vehicle/bicycle_model.gd")
 const Gearing = preload("res://game/vehicle/gearing_setup.gd")
 const Slipstream = preload("res://game/vehicle/slipstream.gd")
 @export var slipstream_enabled := true
+@export var dirty_air_enabled := true
 @export_dir var physics_directory := "res://content/vehicles/open_wheel/physics"
 @export var human_controlled := true
 var physics_components: Dictionary = {}
@@ -127,6 +128,13 @@ func _physics_process(delta: float) -> void:
 func drive_step(delta: float, throttle_input: float, brake_input: float, steering: float) -> void:
 	if not physics_ready:
 		return
+	if get_meta("retired",false):
+		return
+	if player_state.punctured or player_state.limp_required:
+		var limp_speed := preload("res://game/race/incident_rules.gd").LIMP_SPEED_MPS
+		if absf(speed_mps) > limp_speed:
+			throttle_input = 0.0
+			brake_input = maxf(brake_input,clampf((absf(speed_mps)-limp_speed)*.08,0.0,.5))
 	# The base chassis mass is dry; fuel adds to the dynamic model only for the
 	# player while the AI fuel/strategy pass is still pending.
 	sim.set_vehicle_mass(parameters.values.mass_kg+player_state.fuel_mass_kg())
@@ -147,6 +155,7 @@ func drive_step(delta: float, throttle_input: float, brake_input: float, steerin
 		steering = 0.0
 	update_zone_state()
 	sim.slipstream_target = Slipstream.sample(self)
+	sim.dirty_air_target = Slipstream.sample(self,true) if human_controlled and dirty_air_enabled else 0.0
 	var normal := get_floor_normal() if is_on_floor() else Vector3.UP
 	if normal.length_squared() < .5:
 		normal = Vector3.UP

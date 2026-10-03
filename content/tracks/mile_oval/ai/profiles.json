@@ -2,6 +2,8 @@
   "schema_version": 1,
   "classes": {
     "open_wheel": {
+      "speed_plan_hz": 15,
+      "steering_plan_hz": 30,
       "cornering_utilisation": 0.97,
       "minimum_cornering_factor": 0.97,
       "pit_cornering_utilisation": 0.92,

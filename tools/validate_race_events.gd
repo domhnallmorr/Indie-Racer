@@ -38,7 +38,7 @@ func run() -> void:
 		plans[plan.extra_range_laps] = true
 		if is_finite(plan.failure_progress):
 			sampled_failures += 1
-			if plan.failure_type == plan.FailureType.OTHER:
+			if plan.Rules.returns_to_pits(plan.failure_type):
 				other_failures += 1
 			check(plan.failure_progress >= 3 and plan.failure_progress <= 57,"Failure is inside race")
 		driver.car.player_state.configure_fuel(driver.car.parameters.values)
@@ -46,7 +46,7 @@ func run() -> void:
 		repeat.configure(driver,seed_value)
 		check(repeat.extra_range_laps == plan.extra_range_laps and repeat.failure_progress == plan.failure_progress and repeat.failure_type == plan.failure_type,"Seed is repeatable")
 	check(plans.size() == 3 and sampled_failures > 150 and sampled_failures < 250,"Strategy mix and 20% failures")
-	check(other_failures > sampled_failures*.35 and other_failures < sampled_failures*.65,"Failures split roughly evenly between Engine and Other")
+	check(other_failures > sampled_failures*.35 and other_failures < sampled_failures*.65,"Events split roughly evenly between stops and pit returns")
 	var entry: Dictionary = main.lap_timing.entries[1]
 	entry.laps = 4
 	entry.armed = true

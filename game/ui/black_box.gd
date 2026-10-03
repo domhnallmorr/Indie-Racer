@@ -2,7 +2,7 @@ extends PanelContainer
 ## Always-on driving information; switching pages never captures driving input.
 const AMBER := Color(1.0, 0.76, 0.16)
 const MUTED := Color(0.65, 0.68, 0.71)
-const PAGE_NAMES := ["Lap Timing", "Standings", "Fuel"]
+const PAGE_NAMES := ["Lap Timing", "Standings", "Fuel", "Tyres"]
 var practice: Node
 var active_page := 0
 var title: Label
@@ -12,6 +12,9 @@ var pages: Array[Control] = []
 var tabs: Array[Button] = []
 var lap_values: Dictionary = {}
 var fuel_values: Dictionary = {}
+var tyre_value: Label
+var tyre_bar: ProgressBar
+var tyre_fill: StyleBoxFlat
 var standing_rows: Array[Array] = []
 var refresh_time := 0.0
 
@@ -71,10 +74,30 @@ func _ready() -> void:
 	fuel_grid.columns = 2
 	fuel_grid.add_theme_constant_override("v_separation", 6)
 	pages[2].add_child(fuel_grid)
-	for key in ["Remaining", "Tank capacity", "Use / lap", "Est. laps left", "Tyres", "Pit service"]:
+	for key in ["Remaining", "Tank capacity", "Use / lap", "Est. laps left", "Pit service"]:
 		_label(fuel_grid, key + ":", 16, AMBER).size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		fuel_values[key] = _label(fuel_grid, "—", 16)
 		fuel_values[key].horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	pages[3].add_theme_constant_override("separation", 12)
+	_label(pages[3], "Tyre condition", 17, AMBER)
+	tyre_value = _label(pages[3], "100.0%", 30)
+	tyre_bar = ProgressBar.new()
+	tyre_bar.custom_minimum_size.y = 28
+	tyre_bar.show_percentage = false
+	tyre_bar.step = 0.01
+	tyre_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var tyre_background := StyleBoxFlat.new()
+	tyre_background.bg_color = Color(0.12, 0.14, 0.16)
+	tyre_background.set_corner_radius_all(4)
+	tyre_bar.add_theme_stylebox_override("background", tyre_background)
+	tyre_fill = StyleBoxFlat.new()
+	tyre_fill.set_corner_radius_all(4)
+	tyre_bar.add_theme_stylebox_override("fill", tyre_fill)
+	pages[3].add_child(tyre_bar)
+	var tyre_scale := HBoxContainer.new()
+	pages[3].add_child(tyre_scale)
+	_label(tyre_scale, "0% worn out", 13, MUTED).size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_label(tyre_scale, "100% fresh", 13, MUTED)
 	footer = _label(column, "", 12, MUTED)
 	var navigation := HBoxContainer.new()
 	column.add_child(navigation)
@@ -112,7 +135,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	if not visible or not event is InputEventKey or not event.pressed or event.echo:
 		return
 	var key: int = event.keycode if event.keycode != 0 else event.physical_keycode
-	if key in [KEY_F1, KEY_F2, KEY_F3]:
+	if key in [KEY_F1, KEY_F2, KEY_F3, KEY_F4]:
 		select_page(key - KEY_F1)
 		get_viewport().set_input_as_handled()
 
@@ -173,9 +196,13 @@ func refresh() -> void:
 	fuel_values["Use / lap"].text = "%.2f gal" % state.fuel_per_lap_gal
 	fuel_values["Est. laps left"].text = "%.1f" % laps_left if laps_left >= 0.0 else "—"
 	fuel_values["Remaining"].modulate = Color(1, 0.35, 0.25) if laps_left >= 0.0 and laps_left < 3.0 else Color.WHITE
-	fuel_values["Tyres"].text = "%.1f%%" % (state.tyre_condition*100.0) if racing else "Wear off"
+	tyre_value.text = "%.1f%%" % (state.tyre_condition*100.0) if state.tyre_wear_active() else "Wear off"
+	tyre_bar.value = state.tyre_condition*100.0
+	tyre_bar.visible = state.tyre_wear_active()
+	tyre_fill.bg_color = Color(0.3, 0.85, 0.45) if state.tyre_condition > 0.5 else (AMBER if state.tyre_condition > 0.25 else Color(1.0, 0.35, 0.25))
 	fuel_values["Pit service"].text = "Fuel + tyres: %.1f s" % state.service_remaining if state.pit_stall_state == state.StallState.SERVICING else ("In pit lane" if state.is_in_pit_lane else "On track")
 	match active_page:
 		0: footer.text = "Player  •  " + ("Timed lap" if entry.armed else "Cross start/finish to begin timing")
 		1: footer.text = "Positions %d–%d of %d  •  %s" % [first + 1, mini(first + 5, sorted.size()), sorted.size(), "Race order" if racing else "Best lap order"]
 		2: footer.text = "US gallons  •  Range at green pace"+("  •  Yellow burn: %.0f%%" % (state.fuel_burn_factor*100.0) if state.fuel_burn_factor < 1.0 else "")
+		3: footer.text = "Fresh tyres with pit service" if racing else ("Fresh tyres when parked in your pit box" if state.tyre_wear_active() else "Tyre wear disabled in qualifying")

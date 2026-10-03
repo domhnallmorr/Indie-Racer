@@ -9,6 +9,43 @@ line once clear. It is enabled by the track's `ai/racing_corridor.json`. Missing
 corridor data preserves the previous single-line driver. Stale or invalid corridor
 geometry is rejected, with a warning when supplied to the driver.
 
+Failed passing targets are released even when another car is nearby. Returning
+to the racing line still requires a clear path, so abandoning a distant opponent
+does not force a move across an occupied lane. This prevents the Michigan
+Buhl/Boat/Calkins queue from preserving targets hundreds of metres ahead.
+
+An attempt also ends early when the target stays more than 20 metres ahead and
+at least 8 metres farther away than the best gap during that attempt for three
+continuous seconds. This timer starts only after two seconds of commitment and
+with the lane transition complete; recovering below either gap threshold resets
+it. Close battles keep their commitment. Abandonment retains the four-second
+retry cooldown and the existing swept-path clearance checks before returning to
+RACE, including protection for rear traffic and cars alongside. These thresholds
+are `passing_losing_min_gap_m`, `passing_losing_gap_growth_m`, and
+`passing_losing_duration_s` in the shared tuning file. The existing 50-second
+no-progress timeout remains as a fallback.
+
+A committed attempt also reconsiders its lane after two seconds behind a
+same-lane car when its requested pace exceeds that car's speed by the configured
+closing threshold. From a passing groove it tries the racing line first, then
+the opposite groove. Every choice must have pull-out clearance and a clear swept
+path, including rear traffic in any lane it crosses. Current lane transitions
+and genuinely side-by-side attempts keep their existing commitment.
+`tools/validate_racecraft_queue.gd` covers these decisions and safety restrictions.
+
+Completed passes no longer require a fixed 22 m lead. Rear clearance uses the
+actual collision-box rear/nose extents (4.35 m combined for two open-wheel cars),
+a 2 m bumper margin, and the distance the rear car could close during the remaining
+lane blend plus a 0.6 s settling allowance. Texas uses a 70 m blend: at 105 m/s a
+passing-groove-to-RACE move has 0.67 s of commanded blend, with physical following
+allowed to settle afterwards. The two-second minimum pass commitment remains.
+Equal-speed rear traffic therefore needs approximately 6.35 m between car origins,
+not 22–24 m. Faster rear traffic requires more clearance. The margin and settling
+allowance are tunable as `rear_merge_bumper_margin_m` and `rear_merge_settle_s`.
+The same prediction governs rear lane-clear checks; side-room steering releases
+continuously as bumper clearance rises from zero to the margin. Other overlapping
+cars still block the return independently. Front-traffic planning is unchanged.
+
 ## Tuning
 
 `content/racecraft.json` is the game-wide source for tactical thresholds: pass

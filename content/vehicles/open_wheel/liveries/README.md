@@ -15,7 +15,7 @@ This duplicates the two paint materials per instance, installs the same image in
 
 ## 2001 IRL roster
 
-Select **2001 IRL** in F12 and restart practice to use the growing season roster, currently Scott Sharpe (#8 Delphi) Sam Hornish Jnr. (#4 Panther Racing / Pennzoil), Buddy Lazier (#91 Hemelgarn Racing), Billy Boat (#98 CURB Records), Eliseo Salazar (#14 Harrah's), Felipe Giaffone (#21 Hollywood), Al Unser Jr. (#3 Starz), Eddie Cheever (#51 Excite), Buzz Calkins (#12 Bradley), Airton Daré (#88 Bar None), Jeff Ward (#35 Aerosmith / Menards), Robbie Buhl (#24 Purex), Shigeaki Hattori (#55 Epson), Mark Dismore (#28 Delphi), Donnie Beechler (#84 Harrah's), and Robbie McGehee (#10). It contains sixteen AI entries plus the player; the original test rosters are still available.
+Select **2001 IRL** in F12 and restart practice to use the growing season roster, currently Scott Sharpe (#8 Delphi) Sam Hornish Jnr. (#4 Panther Racing / Pennzoil), Buddy Lazier (#91 Hemelgarn Racing), Billy Boat (#98 CURB Records), Eliseo Salazar (#14 Harrah's), Felipe Giaffone (#21 Hollywood), Al Unser Jr. (#3 Starz), Eddie Cheever (#51 Excite), Buzz Calkins (#12 Bradley), Airton Daré (#88 Bar None), Jeff Ward (#35 Aerosmith / Menards), Robbie Buhl (#24 Purex), Shigeaki Hattori (#55 Epson), Mark Dismore (#28 Delphi), Donnie Beechler (#84 Harrah's), Robbie McGehee (#10), Jaques Lazier (#99 Sam Schmidt), Greg Ray (#2 Team Menard), Sarah Fisher (#15 Walker Racing / Kroger), and Didier André (#32 Galles Racing / PlayStation 2). It contains twenty AI entries plus the player; the original test rosters are still available.
 
 Sam's `sam_hornish_2001.png` uses golden yellow paint, outlined Pennzoil lettering, a Chevrolet bowtie, Rexhall endplate badges, a simplified panther outline and nose number 4, reconstructed from the supplied side photograph. Unseen surfaces are inferred; the existing chassis and default helmet remain. Ratings are benchmark values rather than historical performance data.
 
@@ -93,4 +93,12 @@ The mesh generator packs the atlas; geometry changes and rebuilds may repack it.
 
 ### Jaques Lazier / Sam Schmidt #99
 
-`jaques_lazier_2001.png` now follows the supplied yellow/red #99 reference: yellow upper body, red sidepods and upper nose panel, black separation lines, white-backed 99 numbers and approximate Sprint PCS, Sam Schmidt, Firestone and Rexhall lettering. Rebuild with `python tools/build_jaques_livery.py`; capture with `tools/capture_car_2001.gd -- --jaques`. Both entries use independent textures. The roster contains eighteen drivers.
+`jaques_lazier_2001.png` now follows the supplied yellow/red #99 reference: yellow upper body, red sidepods and upper nose panel, black separation lines, white-backed 99 numbers and approximate Sprint PCS, Sam Schmidt, Firestone and Rexhall lettering. Rebuild with `python tools/build_jaques_livery.py`; capture with `tools/capture_car_2001.gd -- --jaques`. Both entries use independent textures.
+
+### Sarah Fisher / Walker Racing / Kroger #15
+
+`sarah_fisher_2001.png` follows the supplied blue-and-white reference: bright blue bodywork, white nose center and wing tops, sweeping white sidepod trim, Kroger oval badges, black 15 numbers on white panels, and approximate Mead/Firehawk lettering. Sponsor marks and unseen surfaces are reconstructed on the existing chassis; the default helmet remains. Rebuild with `python tools/build_fisher_livery.py`; capture four runtime views with `tools/capture_car_2001.gd -- --fisher`. This addition brought the roster to nineteen AI drivers plus the player.
+
+### Didier André / Galles Racing / PlayStation 2 #32
+
+`didier_andre_2001.png` follows the supplied side photograph with pearl-white bodywork, black nose tip and engine-cover cap, thin red shoulder trim, red front-wing surfaces, PlayStation 2 sidepod lettering and white-backed 32 numbers. Small badges and unseen surfaces are approximated on the existing chassis; the default helmet remains. Rebuild with `python tools/build_andre_livery.py`; render four views with `tools/capture_car_2001.gd -- --andre`. The roster now contains twenty AI entries plus the player, within the existing pit capacity.

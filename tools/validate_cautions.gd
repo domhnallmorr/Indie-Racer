@@ -51,7 +51,7 @@ func run() -> void:
 	var expected_stops := []
 	for i in range(main.ai_cars.size()):
 		var car = main.ai_cars[i]
-		car.player_state.fuel_gal = 35.0 if mixed and i%2 == 1 else 18.0
+		car.player_state.fuel_gal = 35.0 if mixed and i%2 == 1 else 8.0
 		if car.player_state.fuel_gal < 20.0:
 			expected_stops.append(car)
 	var retired = main.ai_cars[-1].get_node("Driver")

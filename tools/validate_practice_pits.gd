@@ -8,6 +8,8 @@ func check(ok: bool, message: String) -> void:
 func validate() -> void:
 	Engine.physics_ticks_per_second = 600
 	Engine.time_scale = 10
+	if "--texas" in OS.get_cmdline_user_args():
+		root.set_meta("roster_selection",{"track_id":"texas","file":"res://content/rosters/icr2_test/manifest.json","seed":42,"session_mode":"practice"})
 	var main = load("res://game/main/main.tscn").instantiate()
 	main.roster_seed = 1234
 	if "--bicycle" in OS.get_cmdline_user_args():
@@ -27,6 +29,7 @@ func validate() -> void:
 	if "--natural" in OS.get_cmdline_user_args():
 		driver.stint_laps = 6
 	var phase := 0
+	var texas_apron_samples := 0
 	for tick in range(24000):
 		await physics_frame
 		if phase == 0 and driver.mode == driver.Mode.RACING:
@@ -36,9 +39,17 @@ func validate() -> void:
 				driver.stint_start_laps = driver._timed_laps()-driver.stint_laps
 			phase = 1
 		if phase == 1 and driver.mode == driver.Mode.PIT_ENTRY:
+			if "--texas" in OS.get_cmdline_user_args():
+				check(car.position.x > -150.0,"Texas commits on backstraight before turn three")
+				check(absf(driver.requested_speed-car.speed_mps) < 5.0,"Texas entry starts without a large target-speed discontinuity")
 			check(driver._timed_laps()-driver.stint_start_laps >= driver.stint_laps,"Stint respects completed lap target")
 			check(car.get_collision_exceptions().has(main.player),"Inbound AI ignores player")
 			phase = 2
+		if phase == 2 and "--texas" in OS.get_cmdline_user_args():
+			if car.position.x < -400 and absf(car.position.z) < 100:
+				check(car.position.y < .2,"Texas entry stays on flat apron through turns three/four")
+				if car.speed_mps*3.6 > 230 and car.speed_mps*3.6 < 240:
+					texas_apron_samples += 1
 		if phase == 2 and driver.mode == driver.Mode.WAITING:
 			check(car.global_position.distance_to(driver.pit_box_pose.origin) < .05,"Returns to assigned box")
 			check(car.speed_mps == 0,"Stops in box")
@@ -57,6 +68,8 @@ func validate() -> void:
 		if tick % 3600 == 3599:
 			print("PIT CYCLE phase=",phase," mode=",driver.mode," index=",driver.index," position=",car.global_position," speed=",car.speed_mps)
 	check(phase == 4,"Full departure / return / dwell / repeat completes, phase="+str(phase))
+	if "--texas" in OS.get_cmdline_user_args():
+		check(texas_apron_samples > 30,"Texas holds a distinct apron cruising phase")
 	if phase == 4:
 		main.session.advance(3600.0)
 		driver.index = driver.pit_entry_index

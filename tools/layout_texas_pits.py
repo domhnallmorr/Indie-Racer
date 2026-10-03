@@ -73,7 +73,8 @@ def apply_layout(package):
     reference['pit_path'] = pit
     write('ai/reference_paths.json',reference)
     profile = read('ai/pit_out.lp.json')
-    profile['merge_acceleration_m'] = 600
+    profile['cruise_kph'] = 185
+    profile['merge_acceleration_m'] = 700
     write('ai/pit_out.lp.json',profile)
     boxes = session['pit_boxes']+[session['pace_car_box']]
     for i,box in enumerate(boxes):

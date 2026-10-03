@@ -31,6 +31,8 @@ const Slipstream = preload("res://game/vehicle/slipstream.gd")
 var slipstream_target := 0.0
 var slipstream_strength := 0.0
 var slipstream_drag_reduction := 0.0
+var dirty_air_target := 0.0
+var dirty_air_strength := 0.0
 var downforce_n := 0.0
 var front_downforce_n := 0.0
 var rear_downforce_n := 0.0
@@ -76,6 +78,8 @@ func reset() -> void:
 	slipstream_target = 0.0
 	slipstream_strength = 0.0
 	slipstream_drag_reduction = 0.0
+	dirty_air_target = 0.0
+	dirty_air_strength = 0.0
 	downforce_n = 0.0
 	front_downforce_n = 0.0
 	rear_downforce_n = 0.0
@@ -147,6 +151,9 @@ func _integrate(dt: float, gas: float, brake: float, steering_input: float, gx: 
 	var tow_time := Slipstream.BUILD_TIME_S if tow_target > slipstream_strength else Slipstream.RELEASE_TIME_S
 	slipstream_strength = lerpf(slipstream_strength,tow_target,1.0-exp(-dt/tow_time))
 	slipstream_drag_reduction = slipstream_strength*Slipstream.MAX_DRAG_REDUCTION
+	var wake_target := clampf(dirty_air_target,0.0,1.0)
+	var wake_time := Slipstream.BUILD_TIME_S if wake_target > dirty_air_strength else Slipstream.RELEASE_TIME_S
+	dirty_air_strength = lerpf(dirty_air_strength,wake_target,1.0-exp(-dt/wake_time))
 	var speed := Vector2(u,v).length()
 	var air_velocity := Vector2(u,v)-wind_body_mps
 	airspeed_mps = air_velocity.length()
@@ -156,6 +163,9 @@ func _integrate(dt: float, gas: float, brake: float, steering_input: float, gx: 
 	# Airborne cars still have no tyre forces or yaw/sideslip stability intervention.
 	var steering_assist: float = p.assistance_strength
 	var aero_load: float = .5*p.air_density_kg_m3*p.downforce_area_m2*airspeed_mps*airspeed_mps
+	var front_aero_load: float = aero_load*p.front_downforce_fraction*(1.0-dirty_air_strength*Slipstream.MAX_FRONT_DOWNFORCE_LOSS)
+	var rear_aero_load: float = aero_load*(1.0-p.front_downforce_fraction)*(1.0-dirty_air_strength*Slipstream.MAX_REAR_DOWNFORCE_LOSS)
+	aero_load = front_aero_load+rear_aero_load
 	# Turning the velocity around world up requires normal acceleration on a
 	# banked road. For a level, constant-bank turn this is v²/R * sin(bank).
 	# Use actual yaw, not requested steering, so steering alone cannot add load.
@@ -200,8 +210,8 @@ func _integrate(dt: float, gas: float, brake: float, steering_input: float, gx: 
 	var b: float = p.wheelbase_m*p.front_weight_fraction
 	var a: float = p.wheelbase_m-b
 	downforce_n = aero_load if grounded else 0.0
-	front_downforce_n = downforce_n*p.front_downforce_fraction
-	rear_downforce_n = downforce_n-front_downforce_n
+	front_downforce_n = front_aero_load if grounded else 0.0
+	rear_downforce_n = rear_aero_load if grounded else 0.0
 	drag_n = .5*p.air_density_kg_m3*p.drag_area_m2*airspeed_mps*airspeed_mps*(1.0-slipstream_drag_reduction)
 	var weight: float = vehicle_mass_kg*support_accel if grounded else 0.0
 	var transfer: float = clampf(vehicle_mass_kg*acceleration*p.cg_height_m/p.wheelbase_m,-weight*.35,weight*.35)

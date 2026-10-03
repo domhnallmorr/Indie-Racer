@@ -11,6 +11,7 @@ var opponent: Node3D
 var committed_s := 0.0
 var best_opponent_gap := INF
 var no_progress_s := 0.0
+var losing_attempt_s := 0.0
 var cooldown_s := 0.0
 var passes := 0
 var attempts := 0
@@ -21,6 +22,9 @@ var enabled := false
 var lane_change_blocked := false
 var lane_clear_seconds := 0.0
 const LANE_RESUME_CLEAR_S := .35
+const QUEUE_REPLAN_S := 2.0
+var queue_car: Node3D
+var queue_seconds := 0.0
 var edge_entry_speed_mps := INF
 const TUNING_PATH := "res://content/racecraft.json"
 const TUNING_DEFAULTS := {
@@ -35,7 +39,12 @@ const TUNING_DEFAULTS := {
 	"passing_commit_min_gap_m": 25.0,
 	"passing_commit_max_gap_m": 40.0,
 	"passing_abandon_gap_m": 110.0,
+	"passing_losing_min_gap_m": 20.0,
+	"passing_losing_gap_growth_m": 8.0,
+	"passing_losing_duration_s": 3.0,
 	"passing_no_progress_s": 50.0,
+	"rear_merge_bumper_margin_m": 2.0,
+	"rear_merge_settle_s": 0.6,
 	"lane_blend_distance_m": 30.0,
 	"collision_guard_gap_m": 9.0,
 	"collision_guard_gain": 1.4,
@@ -58,7 +67,12 @@ var passing_status_gap_m := 10.0
 var passing_commit_min_gap_m := 25.0
 var passing_commit_max_gap_m := 40.0
 var passing_abandon_gap_m := 110.0
+var passing_losing_min_gap_m := 20.0
+var passing_losing_gap_growth_m := 8.0
+var passing_losing_duration_s := 3.0
 var passing_no_progress_s := 50.0
+var rear_merge_bumper_margin_m := 2.0
+var rear_merge_settle_s := 0.6
 var lane_blend_distance_m := 30.0
 var collision_guard_gap_m := 9.0
 var collision_guard_gain := 1.4
@@ -89,7 +103,9 @@ func configure(data: Dictionary, race: PackedVector3Array, overrides: Dictionary
 	enabled = false
 	projection_points.clear()
 	projection_blocks.clear()
-	projection_cache.clear()
+	# Detach on reconfiguration: this cache may be shared by drivers which
+	# were configured with the same track geometry.
+	projection_cache = {}
 	_load_tuning(overrides)
 	if data.get("schema_version") != 1 or data.get("units") != "metres":
 		return
@@ -150,7 +166,12 @@ func _load_tuning(overrides: Dictionary) -> void:
 	passing_commit_min_gap_m = values.passing_commit_min_gap_m
 	passing_commit_max_gap_m = values.passing_commit_max_gap_m
 	passing_abandon_gap_m = values.passing_abandon_gap_m
+	passing_losing_min_gap_m = values.passing_losing_min_gap_m
+	passing_losing_gap_growth_m = values.passing_losing_gap_growth_m
+	passing_losing_duration_s = values.passing_losing_duration_s
 	passing_no_progress_s = values.passing_no_progress_s
+	rear_merge_bumper_margin_m = values.rear_merge_bumper_margin_m
+	rear_merge_settle_s = values.rear_merge_settle_s
 	lane_blend_distance_m = values.lane_blend_distance_m
 	collision_guard_gap_m = values.collision_guard_gap_m
 	collision_guard_gain = values.collision_guard_gain
@@ -303,7 +324,15 @@ func update(driver, delta: float) -> void:
 		green_launch_row_delay_remaining_s = maxf(0.0,green_launch_row_delay_remaining_s-delta)
 	elif green_launch_acceleration_remaining_s > 0.0:
 		green_launch_acceleration_remaining_s = maxf(0.0,green_launch_acceleration_remaining_s-delta)
-		green_launch_speed_cap_mps += green_launch_acceleration_mps2*delta
+		var launch_acceleration := green_launch_acceleration_mps2
+		if driver.car.has_method("available_acceleration"):
+			# Meet the speed-dependent envelope smoothly before the timer ends;
+			# removing the launch cap must not produce a second acceleration surge.
+			var available: float = driver.car.available_acceleration(green_launch_speed_cap_mps)
+			var blend := smoothstep(0.0,green_launch_acceleration_window_s,
+				green_launch_acceleration_window_s-green_launch_acceleration_remaining_s)
+			launch_acceleration = lerpf(minf(launch_acceleration,available),available,blend)
+		green_launch_speed_cap_mps += launch_acceleration*delta
 	own = coordinates(driver,driver.car)
 	nearby.clear()
 	for vehicle in driver.rivals:
@@ -324,35 +353,44 @@ func update(driver, delta: float) -> void:
 		# Release the launch constraint on time, not on an empty neighbouring
 		# lane. Normal planning and physical side-room protection take over.
 		launch_weight = move_toward(launch_weight,0.0,maxf(8.0,driver.car.speed_mps)*delta/lane_blend_distance_m)
-	var overlapping := false
-	for other in nearby:
-		if absf(other.gap) < 18:
-			overlapping = true
 	if is_instance_valid(opponent):
 		var separation := gap(driver,coordinates(driver,opponent).x)
 		if best_opponent_gap == INF or separation < best_opponent_gap-.5:
 			best_opponent_gap = separation
 			no_progress_s = 0.0
+			losing_attempt_s = 0.0
 		else:
 			no_progress_s += delta
-		if separation < -22 and committed_s > 2:
+		# Give the pull-out time to settle, then release a persistently losing
+		# attack. Close battles and brief corner-to-corner gap changes keep their
+		# commitment; returning to RACE still uses the normal clearance checks.
+		if committed_s > 2.0 and is_equal_approx(lane,target_lane) and separation > passing_losing_min_gap_m and separation-best_opponent_gap >= passing_losing_gap_growth_m:
+			losing_attempt_s += delta
+		else:
+			losing_attempt_s = 0.0
+		if separation < 0 and committed_s > 2 and _rear_bumper_clearance(driver,opponent,separation,0.0) > rear_merge_bumper_margin_m:
 			passes += 1
 			opponent = null
 			best_opponent_gap = INF
 			no_progress_s = 0.0
+			losing_attempt_s = 0.0
 			cooldown_s = 2
 		# Judge the attempt by sustained gap progress. Instantaneous speed is
 		# misleading under corner braking and previously cancelled valid passes.
-		elif not overlapping and ((committed_s > 2 and separation > passing_abandon_gap_m) or (no_progress_s > passing_no_progress_s and separation > 20)):
+		# Nearby traffic must not preserve a target that has escaped. The lane
+		# checks below independently prevent an unsafe return across a neighbour.
+		elif losing_attempt_s >= passing_losing_duration_s or (committed_s > 2 and separation > passing_abandon_gap_m) or (no_progress_s > passing_no_progress_s and separation > 20):
 			aborted += 1
 			opponent = null
 			best_opponent_gap = INF
 			no_progress_s = 0.0
+			losing_attempt_s = 0.0
 			cooldown_s = 4
 	else:
 		opponent = null
 		best_opponent_gap = INF
 		no_progress_s = 0.0
+		losing_attempt_s = 0.0
 	var desired := target_lane if opponent != null else (green_launch_lane if green_launch_lane_hold_remaining_s > 0 else 0.0)
 	if opponent != null:
 		var opponent_gap := gap(driver,coordinates(driver,opponent).x)
@@ -405,9 +443,11 @@ func update(driver, delta: float) -> void:
 						committed_s = 0
 						best_opponent_gap = leader.gap
 						no_progress_s = 0.0
+						losing_attempt_s = 0.0
 						attempts += 1
 						state = "passing_inside" if leader.gap < passing_status_gap_m and desired < 0 else ("passing_outside" if leader.gap < passing_status_gap_m and desired > 0 else "closing")
 						break
+	desired = _reconsider_queued_pass(driver,desired,delta)
 	# Never cross through another car to return to the ideal line or change lanes.
 	if desired != target_lane and not lane_clear(driver,desired,opponent):
 		desired = target_lane
@@ -430,6 +470,47 @@ func update(driver, delta: float) -> void:
 		lane = move_toward(lane,target_lane,maxf(8,driver.car.speed_mps)*delta/lane_blend_distance_m)
 	if opponent == null and state == "clear" and absf(lane) > .01:
 		state = "returning"
+
+func _reconsider_queued_pass(driver, desired: float, delta: float) -> float:
+	# A committed pass can become a same-lane queue when its target (or another
+	# car) takes that groove. Reconsider after sustained traffic-limited pace,
+	# without interrupting a lane transition or a genuine side-by-side attempt.
+	var leader: Dictionary = {}
+	if opponent != null and is_equal_approx(lane,desired):
+		for other in nearby:
+			if other.gap > 0 and other.gap < passing_commit_max_gap_m and absf(other.lateral-own.y) < 3.1:
+				if leader.is_empty() or other.gap < leader.gap:
+					leader = other
+	if leader.is_empty() or maxf(driver.car.speed_mps,driver.desired_speed_kph/3.6)-leader.car.speed_mps <= closing_speed_mps:
+		queue_car = null
+		queue_seconds = 0.0
+		return desired
+	if queue_car != leader.car:
+		queue_car = leader.car
+		queue_seconds = 0.0
+	queue_seconds = minf(QUEUE_REPLAN_S,queue_seconds+delta)
+	if queue_seconds < QUEUE_REPLAN_S:
+		return desired
+	# From a passing groove, try RACE before crossing to the opposite side.
+	# Include the leader in clearance checks: the new path must actually leave
+	# its occupied lane, with enough longitudinal room for the whole pull-out.
+	var candidates := [0.0,-signf(lane)] if absf(lane) > .5 else [-1.0,1.0]
+	for candidate in candidates:
+		if not _close_pull_out_clear(driver,candidate,lane_lateral(driver,candidate,0),leader):
+			continue
+		if not lane_clear(driver,candidate):
+			continue
+		opponent = leader.car
+		committed_s = 0.0
+		best_opponent_gap = leader.gap
+		no_progress_s = 0.0
+		losing_attempt_s = 0.0
+		attempts += 1
+		queue_car = null
+		queue_seconds = 0.0
+		state = "closing"
+		return candidate
+	return desired
 
 func _update_stalemate(driver, delta: float) -> void:
 	yield_cooldown_s = maxf(0.0,yield_cooldown_s-delta)
@@ -462,21 +543,38 @@ func _update_stalemate(driver, delta: float) -> void:
 		yield_cooldown_s = 16.0
 		stalemate_seconds = 0.0
 
+func _body_end_extent(car: Node3D, rear: bool) -> float:
+	var collider := car.get_node_or_null("CollisionShape3D") as CollisionShape3D
+	if collider != null and collider.shape is BoxShape3D:
+		# Cars face local -Z. Include the collider's offset from the car origin.
+		var box := collider.shape as BoxShape3D
+		return box.size.z*absf(collider.scale.z)*.5+(collider.position.z if rear else -collider.position.z)
+	return 2.25
+
+func _rear_bumper_clearance(driver, other: Node3D, separation: float, candidate: float) -> float:
+	var blend_s := absf(candidate-lane)*lane_blend_distance_m/maxf(driver.car.speed_mps,8.0)
+	var closing_speed: float = maxf(0.0,other.speed_mps-driver.car.speed_mps)
+	return -separation-_body_end_extent(driver.car,true)-_body_end_extent(other,false)-closing_speed*(blend_s+rear_merge_settle_s)
+
 func lane_clear(driver, candidate: float, ignored: Node3D = null) -> bool:
 	var destination := lane_lateral(driver,candidate,0)
 	for other in nearby:
-		if other.car == ignored and absf(other.gap) > 20:
+		# Rear traffic uses bumper clearance over the remaining manoeuvre, not
+		# the broad forward planning window. This applies to ignored targets too.
+		if other.gap < 0 and _rear_bumper_clearance(driver,other.car,other.gap,candidate) > rear_merge_bumper_margin_m:
+			continue
+		if other.car == ignored and other.gap > 20:
 			continue
 		# A rear car continuing on RACE must not pin this car to RACE. Moving
 		# away from it increases lateral clearance; it only blocks the manoeuvre
 		# if it is already established in, or committed to, the destination lane.
-		if other.gap < 0 and absf(other.lateral-destination) > 3.2:
+		if other.gap < 0 and absf(other.lateral-destination) > 3.2 and (other.lateral-own.y)*signf(destination-own.y) <= 1.0:
 			var rear_driver = other.car.get_node_or_null("Driver")
 			var rear_claims_destination := rear_driver != null and absf(rear_driver.racecraft.target_lane-candidate) < .25
 			if not rear_claims_destination:
 				continue
 		var future: float = other.gap+(other.car.speed_mps-driver.car.speed_mps)*2.0
-		if minf(other.gap,future) < 24 and maxf(other.gap,future) > -24:
+		if other.gap < 0 or (minf(other.gap,future) < 24 and maxf(other.gap,future) > -24):
 			if other.lateral > minf(own.y,destination)-3.2 and other.lateral < maxf(own.y,destination)+3.2:
 				# A same-line leader is ahead of the manoeuvre, not alongside it.
 				# Check this exception only for cars that would otherwise block.
@@ -516,7 +614,7 @@ func path_point(driver, distance: float, choice: float) -> Vector3:
 	var alternative: Vector3 = driver._sample_path(inside if choice < 0 else outside,driver.race_distances,at)
 	return base.lerp(alternative,absf(choice))
 
-func ahead(driver, distance: float) -> Vector3:
+func ahead(driver, distance: float, side_bounds: Vector3 = Vector3(INF,INF,INF)) -> Vector3:
 	if not enabled or driver.mode != 2:
 		return driver._ahead(distance)
 	# Sample the committed blend consistently along the preview. Predicting a
@@ -525,9 +623,12 @@ func ahead(driver, distance: float) -> Vector3:
 	var point := path_point(driver,distance,lane)
 	if launch_weight > 0.0:
 		point = point.lerp(track_lane_point(driver,distance,launch_lateral_m),launch_weight)
-	return _leave_side_room(driver,distance,point)
+	return _leave_side_room(driver,distance,point) if side_bounds.x == INF else _apply_side_room(driver,distance,point,side_bounds)
 
 func _leave_side_room(driver, distance: float, point: Vector3) -> Vector3:
+	return _apply_side_room(driver,distance,point,_side_room_bounds(driver))
+
+func _side_room_bounds(driver) -> Vector3:
 	# RACE and a passing groove can converge as the ideal line crosses the
 	# track. An established neighbour needs physical room even when neither
 	# car is changing its lane selection. Preserve their current lateral order.
@@ -549,11 +650,19 @@ func _leave_side_room(driver, distance: float, point: Vector3) -> Vector3:
 		# in one tick. Retain the full original constraint from 1 m separation,
 		# and progressively introduce it before that threshold is reached.
 		var weight := (1.0-smoothstep(9.0,18.0,absf(other.gap)))*smoothstep(0.0,1.0,absf(side))
+		if other.gap < 0:
+			# Release steering room continuously as the rear car becomes safe to
+			# merge ahead of; otherwise this layer would still pin us off RACE.
+			var clearance := _rear_bumper_clearance(driver,other.car,other.gap,target_lane)
+			weight *= 1.0-smoothstep(0.0,rear_merge_bumper_margin_m,clearance)
 		if side > 0:
 			minimum = maxf(minimum,lerpf(-8.0,other.lateral+3.2,weight))
 		else:
 			maximum = minf(maximum,lerpf(8.0,other.lateral-3.2,weight))
-	if not alongside:
+	return Vector3(minimum,maximum,1.0 if alongside else 0.0)
+
+func _apply_side_room(driver, distance: float, point: Vector3, bounds: Vector3) -> Vector3:
+	if bounds.z == 0.0:
 		return point
 	var at: float = fposmod(driver.race_distances[driver.index]+distance,driver.race_length_m)
 	var low: Vector3 = driver._sample_path(inner,driver.race_distances,at)
@@ -561,15 +670,16 @@ func _leave_side_room(driver, distance: float, point: Vector3) -> Vector3:
 	var across := high-low
 	var lateral := (point-low).dot(across)/maxf(across.length_squared(),.001)*16.0-8.0
 	# If squeezed from both sides, hold the present physical lane.
-	lateral = clampf(lateral,minimum,maximum) if minimum <= maximum else own.y
+	lateral = clampf(lateral,bounds.x,bounds.y) if bounds.x <= bounds.y else own.y
 	return low.lerp(high,clampf((lateral+8.0)/16.0,0,1))
 
 func planner_samples(driver, count: int) -> PackedVector3Array:
 	var result := PackedVector3Array()
 	result.resize(count)
+	var side_bounds := _side_room_bounds(driver)
 	if launch_weight > 0.0 or not enabled or driver.mode != 2 or inside.size() != driver.race.size() or driver.race_length_m <= .001:
 		for i in range(count):
-			result[i] = ahead(driver,float(i*5-25))
+			result[i] = ahead(driver,float(i*5-25),side_bounds)
 		return result
 	# Lookahead is ordered. Walk the line once instead of binary-searching both
 	# the ideal and alternate paths independently for every curvature sample.
@@ -599,7 +709,7 @@ func planner_samples(driver, count: int) -> PackedVector3Array:
 		if absf(choice) >= .0001:
 			var alternative := inside[low].lerp(inside[next],fraction) if choice < 0 else outside[low].lerp(outside[next],fraction)
 			point = point.lerp(alternative,absf(choice))
-		result[i] = _leave_side_room(driver,distance,point)
+		result[i] = _apply_side_room(driver,distance,point,side_bounds)
 		previous = at
 	return result
 
@@ -628,6 +738,9 @@ func traffic_speed(driver, request: float) -> float:
 	if is_instance_valid(yielding_car) and yield_remaining_s > 0.0:
 		request = minf(request,maxf(0.0,yielding_car.speed_mps-1.5))
 		driver.traffic_reason = "stalemate_yield_"+str(yielding_car.name)
+	# The current neighbours constrain every preview point identically. Build
+	# those bounds once per traffic query, rather than once per opponent.
+	var side_bounds := _side_room_bounds(driver)
 	for other in nearby:
 		if other.gap <= 0 or other.gap > maxf(15,driver.car.speed_mps*3.5):
 			continue
@@ -637,7 +750,7 @@ func traffic_speed(driver, request: float) -> float:
 		var low: Vector3 = driver._sample_path(inner,driver.race_distances,at)
 		var high: Vector3 = driver._sample_path(outer,driver.race_distances,at)
 		var across := high-low
-		var intended := (ahead(driver,other.gap)-low).dot(across)/maxf(across.length_squared(),.001)*16.0-8.0
+		var intended := (ahead(driver,other.gap,side_bounds)-low).dot(across)/maxf(across.length_squared(),.001)*16.0-8.0
 		var separated: bool = absf(other.lateral-own.y) >= 3.1 and absf(other.lateral-intended) >= 3.1
 		if separated:
 			continue

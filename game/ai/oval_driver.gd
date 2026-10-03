@@ -2,6 +2,7 @@ extends Node
 ## Route-following driver; supplies inputs to the same controller as the player.
 enum Mode { WAITING, PIT_EXIT, RACING, FORMATION, PIT_ENTRY }
 var mode: Mode = Mode.WAITING
+var strength_speed_scale := 1.0
 var practice_cycle := false
 var race_pit_cycle := false
 var race_plan = preload("res://game/race/ai_race_plan.gd").new()
@@ -19,9 +20,14 @@ var stint_laps := 6
 var stint_start_laps := 0
 var pit_entry_index := 0
 var pit_entry_lane_distance := 0.0
+var pit_entry_start_speed := 0.0
+
+func _texas_pits() -> bool:
+	return car.track_data.reference_paths_file == "res://content/tracks/texas/ai/reference_paths.json"
 var pit_approach_join_index := 0
 var completed_stints := 0
 var car_ghost := false
+var collision_exclusion_states: Dictionary = {}
 var release_delay := 4.0
 var elapsed := 0.0
 var car
@@ -46,6 +52,16 @@ var race_length_m := 0.0
 var race_distances := PackedFloat64Array()
 var surface_normals: Dictionary = {}
 var traffic_reason := "clear"
+@export_enum("15 Hz:15", "30 Hz:30", "60 Hz:60") var traffic_update_hz := 15
+var traffic_phase := 0
+var traffic_tick := 0
+var traffic_elapsed := 0.0
+var traffic_last_mode := -1
+var traffic_last_ghost := false
+var traffic_refresh := true
+var traffic_cache_valid := false
+var traffic_cap := INF
+var cached_traffic_reason := "clear"
 var diagnostic: FileAccess
 var log_elapsed := 0.0
 var log_flush_elapsed := 0.0
@@ -63,6 +79,10 @@ var formation_lane_m := 0.0
 var formation_speed_kph := 80.0
 var formation_row := 0
 const DIAGNOSTIC_HEADER := "time_s,mode,index,x_m,z_m,speed_kph,planned_kph,traffic_target_kph,reason,throttle,brake,steering,gear,rpm,grounded,collisions,line_error_m,racecraft,lane,target_lane,opponent,passes"
+
+func configure_strength(strength: int) -> void:
+	# Fine pace adjustment: 90 = -2.5%, 100 = baseline, 120 = +5%.
+	strength_speed_scale = 1.0 + (clampi(strength,90,120)-100)*0.0025
 
 func configure_performance(sampled: Dictionary, profile: Dictionary) -> void:
 	ratings = sampled.duplicate(true)
@@ -83,6 +103,7 @@ func _exit_tree() -> void:
 
 func configure(vehicle: Node3D, race_data: Dictionary, delay: float, record_telemetry: bool = false) -> void:
 	car = vehicle
+	traffic_phase = posmod(hash(str(car.name)),2147483647)
 	if record_telemetry and DirAccess.make_dir_recursive_absolute("user://telemetry") == OK:
 		var path := "user://telemetry/ai_" + str(car.name) + "_" + Time.get_datetime_string_from_system().replace(":", "-") + ".csv"
 		diagnostic = FileAccess.open(path, FileAccess.WRITE)
@@ -157,10 +178,17 @@ func _build_departure() -> void:
 			nearest = i
 	for i in range(nearest+1,pit.size()):
 		route.append(pit[i])
+	# Start the Texas backstraight blend earlier, over twice the distance.
+	# Keep the authored pit lane and apron surface unchanged.
+	if _texas_pits():
+		var trimmed := 0.0
+		while route.size() > 22 and trimmed < 120.0:
+			trimmed += route[-1].distance_to(route[-2])
+			route.remove_at(route.size()-1)
 	# Choose a point ahead on the actual racing line, then match both tangents.
 	var end := route[-1]
 	var entry_tangent := (end-route[-2]).normalized()
-	var intended := end+entry_tangent*120.0
+	var intended := end+entry_tangent*(240.0 if _texas_pits() else 120.0)
 	for i in range(race.size()):
 		if intended.distance_squared_to(race[i]) < intended.distance_squared_to(race[route_join_index]):
 			route_join_index = i
@@ -207,7 +235,7 @@ func _physics_process(delta: float) -> void:
 	_update_index(position)
 	if _update_practice_cycle():
 		return
-	racecraft.update(self,delta)
+	_advance_traffic(delta)
 	var lookahead := clampf(5.0 + absf(car.speed_mps)*.48, 6, 30)
 	var target: Vector3 = _formation_ahead(lookahead) if mode == Mode.FORMATION else racecraft.ahead(self,lookahead)
 	var world_target: Vector3 = car.track.to_global(target)
@@ -234,7 +262,7 @@ func _physics_process(delta: float) -> void:
 	car.update_zone_state()
 	if car.player_state.is_in_pit_speed_zone:
 		desired_speed_kph = minf(desired_speed_kph,car.track_data.speed_limit_kph)
-	var target_mps := _traffic_speed(desired_speed_kph/3.6)
+	var target_mps := _scheduled_traffic_speed(desired_speed_kph/3.6)
 	if mode == Mode.PIT_EXIT and traffic_reason == "clear" and not merge_blocker.is_empty():
 		traffic_reason = "merge_yield_"+merge_blocker
 	var error: float = target_mps-car.speed_mps
@@ -325,6 +353,8 @@ func _planned_speed() -> float:
 		var b := samples[step*2+5]
 		var c := samples[step*2+10]
 		var target := _corner_speed(a,b,c)
+		if mode == Mode.RACING:
+			target *= strength_speed_scale
 		result = minf(result,sqrt(target*target+2*decel*maxf(0,distance-origin_offset-braking_margin_m)))
 	return result
 
@@ -456,6 +486,36 @@ func _curvature_ahead() -> float:
 func _nearest_point(position: Vector3) -> Vector3:
 	return Geometry3D.get_closest_point_to_segment(position,race[index],race[(index+1)%race.size()])
 
+func _advance_traffic(delta: float, physics_tick: int = -1) -> void:
+	# A shared clock keeps phases aligned even after waiting or pit service.
+	traffic_tick = Engine.get_physics_frames() if physics_tick < 0 else physics_tick
+	var interval := maxi(1,roundi(float(Engine.physics_ticks_per_second)/maxi(1,traffic_update_hz)))
+	traffic_elapsed += delta
+	var changed := traffic_last_mode != int(mode) or traffic_last_ghost != car_ghost
+	traffic_refresh = not traffic_cache_valid or changed or posmod(traffic_tick,interval) == posmod(traffic_phase,interval)
+	if changed:
+		# Do not charge time from the previous mode to newly started launch timers.
+		traffic_elapsed = delta
+	if traffic_refresh:
+		racecraft.update(self,traffic_elapsed)
+		traffic_elapsed = 0.0
+	traffic_last_mode = int(mode)
+	traffic_last_ghost = car_ghost
+
+func _scheduled_traffic_speed(request: float) -> float:
+	if traffic_refresh or not traffic_cache_valid:
+		var result := _traffic_speed(request)
+		traffic_cap = result if result < request else INF
+		cached_traffic_reason = traffic_reason
+		traffic_cache_valid = true
+		return result
+	traffic_reason = cached_traffic_reason if traffic_cap < request else "clear"
+	var result := minf(request,traffic_cap)
+	# Race-control limits can change between traffic updates and remain immediate.
+	if race_pit_cycle and practice_session.race_control != null and practice_session.race_control.active():
+		result = minf(result,practice_session.race_control.target_speed(car))
+	return result
+
 func _traffic_speed(request: float) -> float:
 	traffic_reason = "clear"
 	if race_pit_cycle and practice_session.race_control != null and practice_session.race_control.active():
@@ -559,7 +619,16 @@ func _path_merge_clear(position: Vector3) -> bool:
 		# Protect the whole lateral crossing, not just the final join point.
 		# A faster car can catch us at first overlap and be clear by the end.
 		for i in range(index,route.size()):
-			if absf((route[i]-end).dot(right)-lateral) > 3.5:
+			var route_lateral := (route[i]-end).dot(right)
+			if racecraft.enabled and _texas_pits():
+				# A rival rounding turn two can move across the racing corridor
+				# before arrival. Protect that corridor throughout the longer merge,
+				# rather than extrapolating its current lateral offset indefinitely.
+				var inner_lateral: float = (racecraft.inner[route_join_index]-end).dot(right)
+				var outer_lateral: float = (racecraft.outer[route_join_index]-end).dot(right)
+				if route_lateral < minf(inner_lateral,outer_lateral)-3.5 or route_lateral > maxf(inner_lateral,outer_lateral)+3.5:
+					continue
+			elif absf(route_lateral-lateral) > 3.5:
 				continue
 			var time := maxf(0.0,route_distances[i]-start_distance)/speed
 			var predicted: float = longitudinal+other.speed_mps*time-(route[i]-end).dot(heading)
@@ -615,7 +684,7 @@ func _configure_pit_approach() -> void:
 	pit_approach_join_index = nearest
 	while fposmod(race_distances[nearest]-race_distances[pit_approach_join_index],race_length_m) < 70.0:
 		pit_approach_join_index = posmod(pit_approach_join_index-1,race.size())
-	var approach := fposmod(race_distances[nearest]-300.0,race_length_m)
+	var approach := fposmod(race_distances[nearest]-(950.0 if _texas_pits() else 300.0),race_length_m)
 	for i in range(race.size()):
 		if absf(race_distances[i]-approach) < absf(race_distances[pit_entry_index]-approach):
 			pit_entry_index = i
@@ -629,17 +698,45 @@ func _timed_laps() -> int:
 	return laps
 
 func _update_car_collisions() -> void:
-	car_ghost = race_plan.retired or mode == Mode.WAITING or mode == Mode.PIT_ENTRY or mode == Mode.PIT_EXIT or car.player_state.is_in_pit_lane
+	var wants_ghost: bool = race_plan.retired or mode == Mode.WAITING or mode == Mode.PIT_ENTRY or mode == Mode.PIT_EXIT or car.player_state.is_in_pit_lane
+	# Pit cars can overlap racing traffic while their collision exceptions are
+	# active. Re-enabling contacts inside a rival lets penetration recovery push
+	# the chassis down through the road skin. Wait for physical clearance first.
+	if car_ghost and not wants_ghost:
+		wants_ghost = _overlaps_rival()
+	car_ghost = wants_ghost
 	car.set_meta("pit_ghost",car_ghost)
 	for other in rivals:
 		if other == car:
 			continue
-		if car_ghost or other.get_meta("pit_ghost",false):
+		var excluded: bool = car_ghost or other.get_meta("pit_ghost",false)
+		var other_id: int = other.get_instance_id()
+		# Both drivers apply the same symmetric OR of the two ghost flags.
+		# Physics-server exclusions only need changing when that result changes.
+		if collision_exclusion_states.has(other_id) and collision_exclusion_states[other_id] == excluded:
+			continue
+		collision_exclusion_states[other_id] = excluded
+		if excluded:
 			car.add_collision_exception_with(other)
 			other.add_collision_exception_with(car)
 		else:
 			car.remove_collision_exception_with(other)
 			other.remove_collision_exception_with(car)
+
+func _overlaps_rival() -> bool:
+	var body_shape: CollisionShape3D = car.get_node("CollisionShape3D")
+	var query := PhysicsShapeQueryParameters3D.new()
+	query.shape = body_shape.shape
+	query.transform = body_shape.global_transform
+	query.margin = .05
+	query.collision_mask = car.collision_mask
+	query.exclude = [car.get_rid()]
+	# A space query deliberately ignores the car's collision exceptions, so it
+	# can see the rivals that would overlap if those exceptions were removed.
+	for hit in car.get_world_3d().direct_space_state.intersect_shape(query,64):
+		if hit.collider in rivals:
+			return true
+	return false
 
 func _update_practice_cycle() -> bool:
 	if race_pit_cycle:
@@ -709,6 +806,10 @@ func _update_race_pits() -> bool:
 	return false
 
 func _begin_pit_entry(inside_return: bool = false, minimum_approach_m: float = 0.0) -> void:
+	# Texas telemetry: leave the backstraight early and hold the flat apron
+	# through turns 3/4 before the second braking phase into pit road.
+	inside_return = inside_return or _texas_pits()
+	pit_entry_start_speed = maxf(0.0,car.speed_mps)
 	if race_pit_cycle and practice_session.race_control != null and practice_session.race_control.active():
 		practice_session.race_control.commit_pit(car)
 	mode = Mode.PIT_ENTRY
@@ -727,7 +828,8 @@ func _begin_pit_entry(inside_return: bool = false, minimum_approach_m: float = 0
 	while cursor != (pit_approach_join_index+1)%race.size() or travelled < minimum_approach_m:
 		travelled += race[cursor].distance_to(race[posmod(cursor-1,race.size())])
 		var point := _inside_return_point(cursor) if inside_return else race[cursor]
-		route.append(point+lateral_offset*maxf(0.0,1.0-travelled/(120.0 if inside_return else 80.0)))
+		var transition_m := 250.0 if _texas_pits() else (120.0 if inside_return else 80.0)
+		route.append(point+lateral_offset*maxf(0.0,1.0-travelled/transition_m))
 		cursor = (cursor+1)%race.size()
 	start = route[-1]
 	var tangent := (race[(pit_approach_join_index+1)%race.size()]-race[pit_approach_join_index]).normalized()
@@ -763,6 +865,12 @@ func _begin_pit_entry(inside_return: bool = false, minimum_approach_m: float = 0
 	for i in range(route.size()-1):
 		route_distances.append(route_distances[-1]+route[i].distance_to(route[i+1]))
 	index = 0
+	if _texas_pits():
+		# The pit-path origin is the apron approach, not the limiter line.
+		for i in range(route.size()):
+			if car.track_data.contains_speed_limit_zone(route[i]):
+				pit_entry_lane_distance = route_distances[i]
+				break
 
 func _inside_return_point(at_index: int) -> Vector3:
 	if racecraft.enabled:
@@ -770,7 +878,7 @@ func _inside_return_point(at_index: int) -> Vector3:
 		# Aim at its centre (-13 m), with the whole car below the white line.
 		var inward: Vector3 = racecraft.inner[at_index]-racecraft.outer[at_index]
 		inward.y = 0.0
-		return racecraft.inner[at_index]+inward.normalized()*5.0
+		return racecraft.inner[at_index]+inward.normalized()*(20.0 if _texas_pits() else 5.0)
 	var tangent := (race[(at_index+1)%race.size()]-race[at_index]).normalized()
 	return race[at_index]-tangent.cross(Vector3.UP).normalized()*13.0
 
@@ -781,6 +889,18 @@ func _pit_entry_speed() -> float:
 	var progress := route_distances[index]+offset
 	var remaining := maxf(0.0,route_distances[-1]-progress)
 	var lane_speed: float = car.track_data.speed_limit_kph/3.6
+	if _texas_pits():
+		var apron_speed := 235.0/3.6
+		# Distance-based braking preserves a continuous request at commitment.
+		var approach_speed := sqrt(maxf(apron_speed*apron_speed,pit_entry_start_speed*pit_entry_start_speed-2.0*14.0*progress))
+		var lane_envelope := sqrt(lane_speed*lane_speed+2.0*10.0*maxf(0.0,pit_entry_lane_distance-progress-10.0))
+		var stall_envelope := sqrt(2.0*3.0*remaining)
+		# Preview the 8 m/s stall turn instead of stepping down at 40 metres.
+		var stall_turn := sqrt(64.0+2.0*3.0*maxf(0.0,remaining-40.0))
+		if remaining > 150.0:
+			stall_envelope = sqrt(900.0+2.0*10.0*(remaining-150.0))
+			stall_turn = sqrt(724.0+2.0*10.0*(remaining-150.0))
+		return minf(minf(approach_speed,lane_envelope),minf(stall_envelope,stall_turn))
 	# Brake before the lane and progressively slow for the stall approach.
 	var speed := sqrt(lane_speed*lane_speed+2.0*8.0*maxf(0.0,pit_entry_lane_distance-progress-10.0))
 	speed = minf(speed,sqrt(2.0*3.0*remaining))

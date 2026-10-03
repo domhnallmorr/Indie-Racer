@@ -266,7 +266,10 @@ func _try_surface_step(motion: Vector3) -> void:
 			for hit in range(clearance.get_collision_count()):
 				road_only = road_only and _is_drivable_mesh_edge(clearance.get_collider(hit),clearance.get_position(hit))
 			if not road_only:
-				continue
+				# Every larger candidate traverses this same blocked vertical
+				# segment. Repeating the lift cannot clear an overhead obstacle
+				# or an unapproved initial overlap; stop before the other sweeps.
+				return
 		var raised := global_transform
 		raised.origin += lift
 		if test_move(raised,motion,null,.001,true):
@@ -279,6 +282,11 @@ func _try_surface_step(motion: Vector3) -> void:
 		if collision.get_normal().dot(Vector3.UP) < cos(floor_max_angle):
 			continue
 		var rise := height+collision.get_travel().y
+		if rise <= 0.0 and collision.get_normal() == Vector3.UP and get_floor_normal() == Vector3.UP:
+			# On a level floor, clear forward motion and a landing no higher
+			# than the current body need no step. Keep all candidates on banks,
+			# where contact recovery can change the landing between heights.
+			return
 		if rise <= .001 or rise > max_surface_step_m:
 			continue
 		global_position.y += rise+.001

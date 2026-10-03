@@ -24,6 +24,43 @@ func running_model(config):
 	model.engine_omega = model.rear_omega*model.ratio()
 	return model
 
+func dirty_wake(gap: float, lateral := 0.0, angle := 0.0, height := 0.0, speed := 70.0) -> float:
+	return Tow.strength(Transform3D(Basis(Vector3.UP,angle),Vector3(lateral,height,gap)),speed,Transform3D.IDENTITY,70.0,true)
+
+func validate_dirty_air(config) -> void:
+	check(dirty_wake(4.4) == 1.0 and dirty_wake(6.0) == 1.0,"Dirty air stays strong at the gearbox")
+	check(dirty_wake(25) > dirty_wake(50) and dirty_wake(50) > dirty_wake(74),"Dirty air fades with distance")
+	check(dirty_wake(20,1) > 0 and dirty_wake(20,1) < dirty_wake(20),"Dirty air fades laterally")
+	check(dirty_wake(0) == 0 and dirty_wake(-10) == 0 and dirty_wake(75) == 0,"Dirty air only behind and within range")
+	check(dirty_wake(20,4) == 0 and dirty_wake(20,0,PI) == 0 and dirty_wake(20,0,0,4) == 0 and dirty_wake(20,0,0,0,15) == 0,"Dirty air excludes adjacent, oncoming, separated and slow cars")
+	var clean = running_model(config)
+	var dirty = running_model(config)
+	dirty.dirty_air_target = 1.0
+	dirty.dirty_air_strength = 1.0
+	dirty.slipstream_target = 1.0
+	dirty.slipstream_strength = 1.0
+	clean.advance(.001,1,0,0)
+	dirty.advance(.001,1,0,0)
+	check(is_equal_approx(dirty.front_downforce_n/clean.front_downforce_n,.8),"Dirty air loses 20 percent front downforce")
+	check(is_equal_approx(dirty.rear_downforce_n/clean.rear_downforce_n,.9),"Dirty air loses 10 percent rear downforce")
+	check(dirty.front_load < clean.front_load and dirty.rear_load < clean.rear_load,"Dirty air reduces actual tyre loads")
+	check(dirty.front_downforce_n/dirty.downforce_n < clean.front_downforce_n/clean.downforce_n,"Aero balance shifts rearward")
+	check(is_equal_approx(dirty.drag_n/clean.drag_n,.91),"Dirty air retains tow drag benefit")
+	dirty.dirty_air_target = 0.0
+	dirty.advance(1.0/60,1,0,0)
+	check(dirty.dirty_air_strength > .8 and dirty.dirty_air_strength < 1.0,"Dirty air releases smoothly")
+	for tick in range(120):
+		dirty.advance(1.0/60,1,0,0)
+	check(dirty.dirty_air_strength < .001,"Clean air recovers after release")
+	dirty.dirty_air_target = 1.0
+	dirty.reset()
+	check(dirty.dirty_air_target == 0 and dirty.dirty_air_strength == 0,"Reset clears dirty air")
+	dirty.dirty_air_target = 1.0
+	dirty.advance(1.0/60,0,0,0)
+	check(dirty.dirty_air_strength > 0 and dirty.dirty_air_strength < .1,"Dirty air builds smoothly")
+	dirty.advance(.001,0,0,0,0,0,9.81,false)
+	check(dirty.downforce_n == 0 and dirty.front_downforce_n == 0 and dirty.rear_downforce_n == 0,"Airborne axle loads remain zero")
+
 func validate() -> void:
 	check(is_equal_approx(wake(8),1.0),"Close aligned wake reaches full strength")
 	check(wake(25) > wake(50) and wake(50) > wake(74),"Wake fades with distance")
@@ -34,6 +71,7 @@ func validate() -> void:
 	check(wake(20,0,0,0,15) == 0 and wake(20,0,0,0,70,0) == 0,"Slow follower and stopped leader excluded")
 	var config = Config.new()
 	check(config.load_directory("res://content/vehicles/open_wheel/physics"),"Physics loads")
+	validate_dirty_air(config)
 	var clean = running_model(config)
 	var towed = running_model(config)
 	towed.slipstream_target = 1.0
@@ -85,7 +123,9 @@ func validate() -> void:
 	check(Tow.sample(follower) > .99,"AI receives player tow")
 	check(Tow.sample(leader) == 0,"Leader receives no benefit from cars behind")
 	var pack_strength := Tow.sample(follower)
+	var dirty_pack_strength := Tow.sample(follower,true)
 	leader.slipstream_enabled = false
+	check(is_equal_approx(Tow.sample(follower,true),dirty_pack_strength),"Extra pack cars cannot stack dirty air")
 	check(is_equal_approx(Tow.sample(follower),pack_strength),"Extra pack cars cannot stack tow")
 	player.slipstream_enabled = false
 	check(Tow.sample(follower) == 0,"Disabled sources produce no wake")
@@ -111,6 +151,10 @@ func validate() -> void:
 	player.drive_step(1.0/60,1,0,0)
 	follower.update_slipstream(1.0/60)
 	check(player.sim.slipstream_target > .9 and player.sim.slipstream_drag_reduction > 0,"Player drive step applies tow")
+	check(player.sim.dirty_air_target > .9 and player.sim.dirty_air_strength > 0,"Player drive step applies dirty air")
+	player.dirty_air_enabled = false
+	player.drive_step(1.0/60,1,0,0)
+	check(player.sim.dirty_air_target == 0 and player.sim.slipstream_target > .9,"Dirty air can be disabled independently of tow")
 	check(follower.slipstream_target > .9 and follower.slipstream_drag_reduction > 0,"Reference AI applies tow")
 	var driver = follower.get_node("Driver")
 	driver.mode = driver.Mode.RACING
@@ -157,9 +201,10 @@ func validate() -> void:
 	leader.update_zone_state()
 	follower.drive_step(1.0/60,1,0,0)
 	check(follower.sim.slipstream_target > .9 and follower.sim.slipstream_drag_reduction > 0,"Bicycle AI drive step applies tow")
+	check(follower.sim.dirty_air_target == 0,"Dirty air is player-only")
 	main.free()
 	for failure in failures:
 		push_error(failure)
 	if failures.is_empty():
-		print("SLIPSTREAM PASSED: geometry, speed gain, unchanged downforce, smooth transitions, player/AI, pack cap and exclusions.")
+		print("SLIPSTREAM PASSED: geometry, speed gain, dirty-air axle loads, smooth transitions, player/AI, pack cap and exclusions.")
 	quit(0 if failures.is_empty() else 1)

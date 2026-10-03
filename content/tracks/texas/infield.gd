@@ -33,7 +33,7 @@ func _ready() -> void:
 	for x in [-140.0,10.0,160.0]:
 		_rect("GarageAprons",Vector2(x-54,53),Vector2(x+54,145),-.12)
 		for z in [79.0,116.0]:
-			_rect("ServiceAsphalt",Vector2(x-48,z),Vector2(x+48,z+9),-.09)
+			_rect("ServiceAsphalt",Vector2(x-10,z),Vector2(x+48,z+9),-.09)
 	# Transporter parking near either end of the paddock, with restrained paint.
 	for x in [-268.0,265.0]:
 		for z in range(60,117,8):

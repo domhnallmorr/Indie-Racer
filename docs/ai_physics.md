@@ -1,5 +1,27 @@
 # AI vehicle physics
 
+## Reference AI acceleration (2 October 2026)
+
+ICR2 reference cars now use a continuous, piecewise-linear acceleration envelope
+instead of 8 m/s² at every speed. The points (km/h, m/s²) are: (0, 8), (100, 8),
+(160, 7), (200, 6), (240, 5), (280, 4), (320, 2.7), (360, 1.2), (400, 0.4).
+This is a smoothed approximation informed by the latest Texas player recording,
+not a simulated gearbox or a direct fit to traffic-limited pedal inputs. It
+applies to reference cars on all tracks. The positive high-speed tail preserves
+their ability to reach the authored reference pace; braking limits are unchanged.
+
+Starts and restarts retain row reaction delays, but the initial 5 m/s² launch
+cap blends smoothly into the envelope over five seconds. The previous hard
+handover to 8 m/s² caused the field to surge away in the player's higher gears.
+
+Validation: `validate_ai_acceleration.gd` checks decreasing acceleration and
+launch/restart handover at 60/120 Hz; `validate_green_launch.gd` and
+`validate_ai_safety.gd` pass. A seed-42 Texas capture with 18 cars for 60 seconds
+after green had zero car/static contacts or road-limit violations and passed
+`analyze_texas_behavior.py --check`. Field median speed was 282.7 km/h at 10 s
+and 307.4 km/h at 12 s after green. Capture: `builds/texas_behavior/restart_curve/`.
+This is a headless opening-minute check, not a full-race player driving test.
+
 For the current passing paths, two-wide decisions and traffic validation, see
 [AI racecraft](racecraft.md). The dated calibration notes below describe earlier
 single-line behaviour.

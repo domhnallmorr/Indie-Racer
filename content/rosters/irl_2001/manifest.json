@@ -618,6 +618,74 @@
         "basis_time_s": 20.2631,
         "basis": "qualifying"
       }
+    },
+    {
+      "id": "Fisher",
+      "driver_name": "Sarah Fisher",
+      "number": "15",
+      "team": "Walker Racing / Kroger",
+      "colour": "#1071b2",
+      "car_spec": "res://content/car_specs/open_wheel_95.json",
+      "ratings": {
+        "cornering": [
+          92,
+          98
+        ],
+        "braking": [
+          86,
+          98
+        ],
+        "throttle": [
+          88,
+          98
+        ],
+        "consistency": [
+          55,
+          85
+        ]
+      },
+      "icr2_lap_s": 22.198473,
+      "livery": "res://content/vehicles/open_wheel/liveries/sarah_fisher_2001.png",
+      "pace_reference": {
+        "qualifying_position": 21,
+        "qualifying_time_s": 21.3209,
+        "basis_time_s": 21.3209,
+        "basis": "qualifying"
+      }
+    },
+    {
+      "id": "Andre",
+      "driver_name": "Didier Andr\u00e9",
+      "number": "32",
+      "team": "Galles Racing / PlayStation 2",
+      "colour": "#ebeee9",
+      "car_spec": "res://content/car_specs/open_wheel_95.json",
+      "ratings": {
+        "cornering": [
+          92,
+          98
+        ],
+        "braking": [
+          86,
+          98
+        ],
+        "throttle": [
+          88,
+          98
+        ],
+        "consistency": [
+          55,
+          85
+        ]
+      },
+      "icr2_lap_s": 23.760421,
+      "livery": "res://content/vehicles/open_wheel/liveries/didier_andre_2001.png",
+      "pace_reference": {
+        "qualifying_position": 27,
+        "qualifying_time_s": 22.8211,
+        "basis_time_s": 22.8211,
+        "basis": "qualifying"
+      }
     }
   ],
   "race_grid": [
@@ -638,7 +706,9 @@
     "Beechler",
     "McGehee",
     "JaquesLazier",
-    "GregRay"
+    "GregRay",
+    "Fisher",
+    "Andre"
   ],
   "ai_method": "ICR2",
   "description": "2001 IRL reference liveries with Phoenix 2001 qualifying-relative AI pace, anchored to a 21.2-second Hornish target. Beechler uses a Salazar estimate; Jaques Lazier retains his previous provisional pace estimate.",

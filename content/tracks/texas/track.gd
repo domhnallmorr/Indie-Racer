@@ -6,9 +6,24 @@ var camera_positions: Array = []
 var bank_focus := Vector3.ZERO
 var pit_focus := Vector3.ZERO
 var overview_distance := 1350.0
+var _road_material: ShaderMaterial
+var _paved_material: ShaderMaterial
+var _race_line: Array = []
+var _lap_length := 2414.016
 
 func _ready() -> void:
 	var data: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://content/tracks/texas/geometry.json"))
+	var reference: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://content/tracks/texas/ai/reference_paths.json"))
+	var line: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://content/tracks/texas/ai/race_line.json"))
+	_race_line = line.points
+	_lap_length = reference.reference_length_m
+	_road_material = ShaderMaterial.new()
+	_road_material.shader = preload("res://content/tracks/texas/asphalt.gdshader")
+	var turns: Array = reference.bank_turn_sections
+	_road_material.set_shader_parameter("turn_limits",Vector4(turns[0][0],turns[0][1],turns[1][0],turns[1][1]))
+	_road_material.set_shader_parameter("lap_length",_lap_length)
+	_paved_material = _road_material.duplicate()
+	_paved_material.set_shader_parameter("racing_surface",false)
 	camera_positions = data.cameras
 	bank_focus = _v(data.bank_focus)
 	pit_focus = _v(data.pit_focus)
@@ -47,6 +62,10 @@ func _build_strip(data: Dictionary) -> void:
 	if data.get("double_sided",false):
 		mat.cull_mode = BaseMaterial3D.CULL_DISABLED
 	builder.set_material(mat)
+	if data.name == "RacingSurface":
+		builder.set_material(_road_material)
+	elif data.name in ["Apron","PitLane"]:
+		builder.set_material(_paved_material)
 	if data.name == "PitSeparationGrass":
 		var turf := ShaderMaterial.new()
 		turf.shader = preload("res://content/tracks/texas/infield_surface.gdshader")
@@ -60,8 +79,21 @@ func _build_strip(data: Dictionary) -> void:
 			var b := _v(rows[i+1][j])
 			var c := _v(rows[i+1][j+1])
 			var d := _v(rows[i][j+1])
-			for p in [a,c,b,a,d,c]:
-				builder.set_uv(Vector2(p.x,p.z))
+			var vertices := [a,c,b,a,d,c]
+			var row_indices := [i,i+1,i+1,i,i,i+1]
+			for vertex_index in range(6):
+				var p: Vector3 = vertices[vertex_index]
+				if data.name == "RacingSurface":
+					var row_index: int = row_indices[vertex_index]
+					var inner := _v(rows[row_index][-1])
+					var across := _v(rows[row_index][0])-inner
+					across.y = 0
+					var width := across.length()
+					across /= width
+					builder.set_uv(Vector2(_lap_length*row_index/(rows.size()-1),(p-inner).dot(across)))
+					builder.set_uv2(Vector2((_v(_race_line[row_index])-inner).dot(across),width))
+				else:
+					builder.set_uv(Vector2(p.x,p.z))
 				builder.add_vertex(p)
 	builder.generate_normals()
 	var instance := MeshInstance3D.new()
