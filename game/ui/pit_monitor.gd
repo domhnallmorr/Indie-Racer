@@ -17,6 +17,9 @@ var wings_page: VBoxContainer
 var gearing_page: VBoxContainer
 var gearing: VBoxContainer
 var gearing_button: Button
+var roll_page: VBoxContainer
+var roll: VBoxContainer
+var roll_button: Button
 var aero: VBoxContainer
 var fuel: Label
 var heading: Label
@@ -93,6 +96,7 @@ func _ready() -> void:
 	fuel_button = _button(setup_page,"Fuel Load",_open_fuel)
 	wings_button = _button(setup_page,"Wings",_open_wings)
 	gearing_button = _button(setup_page,"Gearing",_open_gearing)
+	roll_button = _button(setup_page,"Roll Balance",_open_roll)
 	_button(setup_page,"Back to Main Menu",_home)
 	fuel_page = _page(layout)
 	var row := HBoxContainer.new()
@@ -129,6 +133,11 @@ func _ready() -> void:
 	gearing.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	gearing_scroll.add_child(gearing)
 	_button(gearing_page,"Back to Car Setup",_open_setup.bind("gearing"))
+	roll_page = _page(layout)
+	roll = preload("res://game/ui/roll_setup.gd").new()
+	roll.shell = self
+	roll_page.add_child(roll)
+	_button(roll_page,"Back to Car Setup",_open_setup.bind("roll"))
 	var hint := Label.new()
 	hint.text = "ENTER: use monitor   •   Arrows / Tab: navigate   •   ESC: back"
 	hint.add_theme_font_size_override("font_size",16)
@@ -163,7 +172,7 @@ func _button(parent: Control, title: String, action: Callable) -> Button:
 
 func available() -> bool:
 	var state = player.player_state
-	return state != null and state.session != null and state.session.session_type in [state.session.SessionType.PRACTICE,state.session.SessionType.QUALIFYING] and state.pit_stall_state == state.StallState.STOPPED
+	return state != null and state.session != null and state.session.session_type in [state.session.SessionType.PRACTICE,state.session.SessionType.QUALIFYING,state.session.SessionType.PRIVATE_TESTING] and state.pit_stall_state == state.StallState.STOPPED
 
 func _process(_delta: float) -> void:
 	var usable: bool = available() and cockpit.active and player.driving_enabled
@@ -177,7 +186,9 @@ func _process(_delta: float) -> void:
 	var title := "FUEL LOAD" if fuel_page.visible else "WINGS" if wings_page.visible else "EDIT CAR SETUP" if setup_page.visible else "PIT MONITOR"
 	if gearing_page.visible:
 		title = "GEARING"
-	heading.text = ("PRACTICE" if state.session.session_type == state.session.SessionType.PRACTICE else "QUALIFYING") + "  /  " + title
+	if roll_page.visible:
+		title = "ROLL BALANCE"
+	heading.text = state.session.display_name().to_upper() + "  /  " + title
 	fuel.text = "FUEL  /  %02d GAL" % int(state.selected_fuel_gal)
 	depart.disabled = state.session.status != state.session.Status.RUNNING
 	depart.text = "SESSION COMPLETE" if depart.disabled else "Go to Track"
@@ -202,7 +213,7 @@ func close() -> void:
 	center.hide()
 
 func _show_page(page: VBoxContainer, first: Control) -> void:
-	for candidate in [home,setup_page,fuel_page,wings_page,gearing_page]:
+	for candidate in [home,setup_page,fuel_page,wings_page,gearing_page,roll_page]:
 		candidate.visible = candidate == page
 	if focused:
 		first.grab_focus()
@@ -214,6 +225,8 @@ func _open_setup(return_from: String = "") -> void:
 	_show_page(setup_page,wings_button if return_from == "wings" else fuel_button)
 	if return_from == "gearing" and focused:
 		gearing_button.grab_focus()
+	if return_from == "roll" and focused:
+		roll_button.grab_focus()
 
 func _open_fuel() -> void:
 	_show_page(fuel_page,fuel_minus)
@@ -225,6 +238,10 @@ func _open_wings() -> void:
 func _open_gearing() -> void:
 	gearing.refresh()
 	_show_page(gearing_page,gearing.final_drive.get_line_edit())
+
+func _open_roll() -> void:
+	roll.refresh()
+	_show_page(roll_page,roll.front.get_line_edit())
 
 func _fuel(amount: float) -> void:
 	if available():
@@ -253,7 +270,9 @@ func _input(event: InputEvent) -> void:
 	if not event is InputEventKey or not event.pressed or event.echo:
 		return
 	if focused and event.keycode == KEY_ESCAPE:
-		if gearing_page.visible:
+		if roll_page.visible:
+			_open_setup("roll")
+		elif gearing_page.visible:
 			_open_setup("gearing")
 		elif fuel_page.visible or wings_page.visible:
 			_open_setup("wings" if wings_page.visible else "fuel")

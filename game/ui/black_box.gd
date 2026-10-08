@@ -2,7 +2,8 @@ extends PanelContainer
 ## Always-on driving information; switching pages never captures driving input.
 const AMBER := Color(1.0, 0.76, 0.16)
 const MUTED := Color(0.65, 0.68, 0.71)
-const PAGE_NAMES := ["Lap Timing", "Standings", "Fuel", "Tyres"]
+const PAGE_NAMES := ["Lap Timing", "Standings", "Fuel", "Tyres", "Tyre Loads"]
+const TAB_NAMES := ["Laps", "Order", "Fuel", "Tyres", "Loads"]
 var practice: Node
 var active_page := 0
 var title: Label
@@ -17,6 +18,8 @@ var tyre_bar: ProgressBar
 var tyre_fill: StyleBoxFlat
 var standing_rows: Array[Array] = []
 var refresh_time := 0.0
+var load_rows: Array[Array] = []
+var roll_balance: Label
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
@@ -98,12 +101,27 @@ func _ready() -> void:
 	pages[3].add_child(tyre_scale)
 	_label(tyre_scale, "0% worn out", 13, MUTED).size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_label(tyre_scale, "100% fresh", 13, MUTED)
+	var loads := GridContainer.new()
+	loads.columns = 4
+	loads.add_theme_constant_override("h_separation",16)
+	loads.add_theme_constant_override("v_separation",6)
+	pages[4].add_child(loads)
+	for text in ["TYRE","LOAD","GRIP USED","STATE"]:
+		_label(loads,text,13,AMBER)
+	for corner in ["FL","FR","RL","RR"]:
+		var row: Array = []
+		for text in [corner,"0 N","0%","—"]:
+			var label := _label(loads,text,16)
+			label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			row.append(label)
+		load_rows.append(row)
+	roll_balance = _label(pages[4],"",13,MUTED)
 	footer = _label(column, "", 12, MUTED)
 	var navigation := HBoxContainer.new()
 	column.add_child(navigation)
 	for i in range(PAGE_NAMES.size()):
 		var button := Button.new()
-		button.text = "F%d  %s" % [i + 1, PAGE_NAMES[i]]
+		button.text = "F%d  %s" % [i + 1, TAB_NAMES[i]]
 		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		button.focus_mode = Control.FOCUS_NONE
 		button.toggle_mode = true
@@ -135,7 +153,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	if not visible or not event is InputEventKey or not event.pressed or event.echo:
 		return
 	var key: int = event.keycode if event.keycode != 0 else event.physical_keycode
-	if key in [KEY_F1, KEY_F2, KEY_F3, KEY_F4]:
+	if key in [KEY_F1, KEY_F2, KEY_F3, KEY_F4, KEY_F5]:
 		select_page(key - KEY_F1)
 		get_viewport().set_input_as_handled()
 
@@ -149,6 +167,13 @@ func refresh() -> void:
 	var timing = practice.lap_timing
 	var session = practice.session
 	var state = practice.player_state
+	var sim = practice.player.sim
+	for i in range(4):
+		load_rows[i][1].text = "%.0f N" % sim.wheel_loads[i]
+		load_rows[i][2].text = "%.0f%%" % (sim.wheel_usage[i]*100.0)
+		load_rows[i][3].text = "UNLOADED" if sim.wheel_loads[i] < 1.0 else "SLIDING" if sim.wheel_demand[i] > 1.0 else "NEAR LIMIT" if sim.wheel_usage[i] > .9 else "GRIPPING"
+		load_rows[i][3].modulate = Color(1,.35,.25) if sim.wheel_demand[i] > 1.0 else AMBER if sim.wheel_usage[i] > .9 else MUTED
+	roll_balance.text = "Roll stiffness: %.0f%% front / %.0f%% rear" % [sim.p.front_roll_stiffness_fraction*100.0,(1.0-sim.p.front_roll_stiffness_fraction)*100.0]
 	var racing: bool = session.session_type == session.SessionType.RACE
 	var sorted: Array = timing.track_order() if racing else timing.standings()
 	var entry: Dictionary = {}
@@ -162,7 +187,7 @@ func refresh() -> void:
 		return
 	var finished: bool = session.status == session.Status.FINISHED
 	var formation: bool = session.status == session.Status.FORMATION
-	status.text = ("RACE  •  %d laps" % session.race_laps) if racing else "PRACTICE  •  Remaining: " + session.clock_text()
+	status.text = ("RACE  •  %d laps" % session.race_laps) if racing else session.display_name().to_upper()+"  •  Remaining: " + session.clock_text()
 	if formation:
 		status.text += "  •  Formation"
 	elif finished:
@@ -206,3 +231,4 @@ func refresh() -> void:
 		1: footer.text = "Positions %d–%d of %d  •  %s" % [first + 1, mini(first + 5, sorted.size()), sorted.size(), "Race order" if racing else "Best lap order"]
 		2: footer.text = "US gallons  •  Range at green pace"+("  •  Yellow burn: %.0f%%" % (state.fuel_burn_factor*100.0) if state.fuel_burn_factor < 1.0 else "")
 		3: footer.text = "Fresh tyres with pit service" if racing else ("Fresh tyres when parked in your pit box" if state.tyre_wear_active() else "Tyre wear disabled in qualifying")
+		4: footer.text = "Grip used can fall after the peak; watch SLIDING."

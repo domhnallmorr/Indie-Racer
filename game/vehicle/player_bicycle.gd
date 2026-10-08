@@ -16,7 +16,35 @@ var wheel_input: Node
 var telemetry = preload("res://game/vehicle/telemetry.gd").new()
 var aero_setup_key := ""
 var gearing_setup_key := ""
+var roll_setup_key := ""
 @export var wind_world_mps := Vector3.ZERO
+
+static func valid_roll_balance(value: Variant) -> bool:
+	return (value is float or value is int) and is_finite(float(value)) and value >= .35 and value <= .65
+
+func load_roll_setup(track_key: String) -> void:
+	roll_setup_key = track_key
+	var saved := ConfigFile.new()
+	if saved.load("user://mechanical_setups.cfg") != OK:
+		return
+	var value = saved.get_value(track_key,"front_roll_stiffness_fraction",sim.p.front_roll_stiffness_fraction)
+	if valid_roll_balance(value):
+		sim.p.front_roll_stiffness_fraction = float(value)
+
+func save_roll_setup(front_fraction: float) -> Error:
+	if not can_adjust_aero() or roll_setup_key.is_empty():
+		return ERR_UNAVAILABLE
+	if not valid_roll_balance(front_fraction):
+		return ERR_INVALID_PARAMETER
+	var saved := ConfigFile.new()
+	var error := saved.load("user://mechanical_setups.cfg")
+	if error != OK and error != ERR_FILE_NOT_FOUND:
+		return error
+	saved.set_value(roll_setup_key,"front_roll_stiffness_fraction",front_fraction)
+	error = saved.save("user://mechanical_setups.cfg")
+	if error == OK:
+		sim.p.front_roll_stiffness_fraction = front_fraction
+	return error
 
 func load_gearing_setup(track_key: String) -> void:
 	gearing_setup_key = track_key
@@ -53,6 +81,9 @@ func save_gearing_setup(final_drive: float, ratios: Array) -> Error:
 
 func load_aero_setup(track_key: String) -> void:
 	aero_setup_key = track_key
+	# Baseline for the first street course; a saved user setup still wins below.
+	if track_key.get_base_dir().get_file() == "surfers_paradise":
+		preload("res://game/vehicle/aero_model.gd").apply(sim.p,"road",14.0,14.0)
 	var saved := ConfigFile.new()
 	if saved.load("user://aero_setups.cfg") != OK:
 		return
@@ -66,7 +97,7 @@ func load_aero_setup(track_key: String) -> void:
 	preload("res://game/vehicle/aero_model.gd").apply(sim.p,package,front,rear)
 
 func can_adjust_aero() -> bool:
-	return physics_ready and player_state != null and player_state.session != null and player_state.session.session_type in [player_state.session.SessionType.PRACTICE,player_state.session.SessionType.QUALIFYING] and player_state.pit_stall_state == player_state.StallState.STOPPED and Vector2(sim.u,sim.v).length() < 0.5
+	return physics_ready and player_state != null and player_state.session != null and player_state.session.session_type in [player_state.session.SessionType.PRACTICE,player_state.session.SessionType.QUALIFYING,player_state.session.SessionType.PRIVATE_TESTING] and player_state.pit_stall_state == player_state.StallState.STOPPED and Vector2(sim.u,sim.v).length() < 0.5
 
 func save_aero_setup(package: String, front: float, rear: float) -> Error:
 	if not can_adjust_aero() or aero_setup_key.is_empty():
@@ -112,6 +143,10 @@ func _ready() -> void:
 		push_error("Player physics configuration failed: "+"; ".join(parameters.errors))
 		return
 	sim.configure(parameters.values)
+	if human_controlled:
+		sim.experimental_wheel_motion = DrivingOptions.experimental_handling
+		sim.independent_front_rotation = DrivingOptions.independent_front_rotation
+		DrivingOptions.handling_changed.connect(_set_experimental_handling)
 	add_to_group(Slipstream.GROUP)
 	max_surface_step_m = parameters.values.surface_step_m
 	floor_constant_speed = false
@@ -123,13 +158,18 @@ func _ready() -> void:
 func _physics_process(delta: float) -> void:
 	if human_controlled and driving_enabled and physics_ready:
 		var inputs: Vector3 = wheel_input.controls()
-		drive_step(delta, inputs.x, inputs.y, inputs.z)
+		drive_step(delta, inputs.x, inputs.y, inputs.z, wheel_input.steering_from_wheel)
 
-func drive_step(delta: float, throttle_input: float, brake_input: float, steering: float) -> void:
+func _set_experimental_handling(enabled: bool) -> void:
+	sim.experimental_wheel_motion = enabled
+	sim.independent_front_rotation = DrivingOptions.independent_front_rotation
+
+func drive_step(delta: float, throttle_input: float, brake_input: float, steering: float, direct_wheel_steering := false) -> void:
 	if not physics_ready:
 		return
 	if get_meta("retired",false):
 		return
+	sim.direct_steering = direct_wheel_steering
 	if player_state.punctured or player_state.limp_required:
 		var limp_speed := preload("res://game/race/incident_rules.gd").LIMP_SPEED_MPS
 		if absf(speed_mps) > limp_speed:

@@ -117,10 +117,41 @@ vehicles without a racing index use an exact spatially indexed projection. Resul
 for unchanged positions are cached; see [performance](performance.md). Cars outside the racing
 surface band are excluded, while pit-exit driving retains its existing controls.
 
+Corner entry commits the selected RACE/inside/outside destination until exit.
+A safe lane blend already underway can finish; an unsafe blend still pauses.
+New passes, queue replanning and moves back into the tow wait until the corner
+ends. Completing or abandoning an attempt can release its target in the corner,
+but the driver retains that groove until exit. Collision braking, side-room
+steering, rear-traffic clearance and green-start release remain active.
+Telemetry reports `corner_hold` when holding a corner lane without an active
+battle or a side-room status.
+
+Each track supplies `ai/corner_regions.json`. Regions use entry/exit sample
+indices (entry inclusive, exit exclusive), corresponding reference positions,
+and the racing-line point count. The authored regions begin 20 m before each
+turn and end 20 m beyond it. Indy has four separate turns; the other current
+ovals hold each continuous two-turn sweep. Mile Oval's final sweep wraps across
+the lap seam. Stale markers, overlapping regions, duplicate names and invalid
+indices reject the file. Missing or invalid files use a cached road-centre
+curvature fallback with separate entry/exit thresholds and 50 m of straight
+before release. Geometry is checked at configuration; ticks only read the region
+at the current path index.
+
+`tools/validate_corner_commitment.gd -- --live` covers Ward's recorded T4
+opportunity, exit reassessment, existing passes, blocked lane blends, braking,
+side room, queued attacks, all four authored tracks, stale-data fallback and
+lap-seam regions. Its seed-1967411212/105-strength live three-car fixture held
+RACE for all 268 T4 ticks, reassessed on exit, and recorded zero contacts and
+road departures over ten simulated seconds.
+
 An approaching faster car normally selects an inside or outside attempt 25–40
 metres behind a leader. A car already following inside that window may also pull
 out when its unguarded requested pace exceeds the leader's speed. The closest
 leader is considered first, so a further car cannot hide a nearer obstruction.
+On straights and corner exits, tow-enabled cars first follow the leader's
+established groove, delaying the pull-out according to closing speed and lane
+blend time. A stalled attempt can safely return behind the leader to regain the
+tow. See [slipstream decisions and validation](slipstream.md).
 Lane checks inspect present and two-second projected
 longitudinal gaps and the lateral space the manoeuvre crosses. A leading AI holds
 its established groove while an attacker uses a clearly separated passing groove.
@@ -222,7 +253,7 @@ guarantee or a worst-case pack-racing benchmark.
 
 ## Limits
 
-This is a two-wide prototype: no deliberate blocking, drafting, three-wide strategy,
+This is a two-wide prototype: no deliberate blocking, three-wide strategy,
 panic paths, crash recovery, race starts, flags or pit-return strategy. Drivers use
 simple gap prediction and can abandon viable attempts or remain in queues. The
 player is included in proximity checks, but unpredictable moves and collisions

@@ -2,7 +2,7 @@
 
 [Back to the overview](player_physics.md). Checked against
 [bicycle_model.gd](../game/vehicle/bicycle_model.gd) and
-[player_bicycle.gd](../game/vehicle/player_bicycle.gd) on 30 September 2026.
+[player_bicycle.gd](../game/vehicle/player_bicycle.gd) on 6 October 2026.
 Equations below describe this implementation, including its approximations.
 
 ## Coordinates and state
@@ -10,7 +10,7 @@ Equations below describe this implementation, including its approximations.
 The body frame uses `u` forward and `v` left, in m/s. Positive yaw rate `r`
 turns left, in rad/s. Steering `delta` is in radians internally. The model also
 stores front/rear axle angular speeds, engine angular speed, throttle, clutch,
-gear and filtered longitudinal acceleration. Configuration angles use degrees;
+gear and filtered longitudinal/contact-force accelerations. Configuration angles use degrees;
 engine configuration uses RPM, converted with `omega = RPM * 2*pi/60`.
 
 Let `L` be wheelbase and `f` the static front weight fraction. The distances from
@@ -18,9 +18,18 @@ CG to front and rear axles are `a = L*(1-f)` and `b = L*f`. Stiffness and wheel
 inertia describe entire axles, not individual tyres.
 
 `advance()` considers automatic shifts once, then divides the supplied tick into
-`ceil(delta_time/0.001)` steps. Each step is at most 1 ms. Forces, axle speeds,
-body velocity and yaw are updated explicitly in `_integrate()`; heading change
-accumulates across these steps. This is not an implicit suspension solver.
+steps no longer than `min(0.0005, 0.8/clutch_rate)` seconds, where
+`clutch_rate = clutch_stiffness * (1/engine_inertia + ratio^2*efficiency/rear_axle_inertia)`.
+The ratio includes final drive. This bounds the explicit clutch response for
+custom gearing and inertias as well as the baseline; the former 1 ms ceiling
+was unstable in first gear. Each `_integrate()` step evaluates the coupled
+explicit Euler update once. `integration_steps` counts those force evaluations;
+clutch torque extrema and heading change accumulate across the tick.
+
+The more expensive step-doubling solver was withdrawn after testing showed no
+handling benefit. It is retained only as an offline reference in
+`tools/fixtures/step_doubling_reference.gd`. Severe braking remains sensitive to
+timestep refinement; see the investigation in [tuning notes](player_physics_tuning.md).
 
 ## Axle slip and tyre forces
 
@@ -35,20 +44,44 @@ kappa_front = (omega_front*radius_front - front_long) / max(abs(front_long), sli
 kappa_rear  = (omega_rear*radius_rear - u) / max(abs(u), slip_reference_speed)
 ```
 
-The reference speed regularises slip near rest. With axle normal load `Fz`,
+The reference speed regularises slip near rest. The axle-reference tyre helper uses normal load `Fz`,
 cornering stiffness `C`, longitudinal stiffness `K`, and grip multiplier `g`:
 
 ```text
 load_scale = (Fz/reference_load)^load_stiffness_exponent
 raw_force = (K*load_scale*kappa, -C*load_scale*alpha)
-force = raw_force limited to length (Fz*friction_coefficient*g)
+peak = Fz*friction_coefficient*g * max(Fz/reference_load, 0.1)^(load_grip_exponent-1)
+q = length(raw_force)/peak
+envelope = sin(q)                                     # q <= pi/2
+envelope = sliding + (1-sliding)*exp(-((q-pi/2)/width)^2) # q > pi/2
+force = normalized(raw_force) * peak * envelope
 ```
 
-Zero load produces zero tyre force. The grip multiplier combines surface grip
+For each wheel, evaluate this helper with `Fz = 2*wheel_load`, then halve
+its force. This preserves the authored per-axle stiffness/reference load while
+resolving each side independently. Left and right still share axle slip angles,
+slip ratios and angular speed; there is no differential or individual contact
+velocity model yet. Sum the two wheel forces to obtain the axle force used in
+body and wheel-speed integration.
+
+`load_grip_exponent` is 0.98: peak force grows sublinearly with load above 10%
+of reference load. Below that threshold the friction coefficient is held constant
+to avoid divergence near wheel lift. At exponent 1 and equal side loads, summed
+wheel forces exactly recover the previous axle tyre curve. The existing 0.85
+stiffness exponent is separate from this new peak-force exponent.
+
+Zero load, zero grip or zero demand produces zero tyre force. The grip multiplier combines surface grip
 and tyre condition. Acceleration/braking and turning share one force budget:
 requesting more longitudinal force leaves less lateral force at saturation.
-There is no separate post-peak tyre curve. Displayed grip usage is the length of
-the capped force divided by available grip, not the uncapped demand.
+Small-slip stiffness is preserved, with a smooth peak and gradual fall to
+`sliding_grip_fraction` (0.85). `post_peak_falloff` (2.0) controls the width of
+that fall in normalized combined demand. The pure lateral peak angle is
+`(pi/2)*peak/(C*load_scale)`; peak longitudinal slip follows the same expression
+with `K`. This is a provisional symmetric curve, not a measured tyre fit.
+Displayed grip usage is delivered force divided by peak force: it can fall below
+100% beyond the peak. Per-wheel normalized demand is `q/(pi/2)`; values above 1
+identify post-peak sliding even when delivered force has dropped. F5 shows loads,
+usage and this sliding state; telemetry records all four corners.
 
 ## Axle loads, fuel and banks
 
@@ -63,7 +96,8 @@ and velocity, not requested steering:
 turn_normal_accel = r * dot((u,v), turn_normal_factors)
 support_accel = max(0, normal_gravity + turn_normal_accel)
 weight = mass*support_accel                       # grounded only
-transfer = clamp(mass*filtered_accel*cg_height/L, -0.35*weight, 0.35*weight)
+contact_accel = (front_force_body_x + rear_force_x - rolling_force_x)/mass
+transfer = clamp(mass*filtered_contact_accel*cg_height/L, -0.35*weight, 0.35*weight)
 front_load = max(0, weight*f + front_downforce - transfer)
 rear_load  = max(0, weight*(1-f) + rear_downforce + transfer)
 ```
@@ -71,8 +105,39 @@ rear_load  = max(0, weight*(1-f) + rear_downforce + transfer)
 `turn_normal_factors` comes from rotating each road-plane basis vector about
 world up and projecting that change onto the road normal. On a steady banked
 turn this represents the normal component of centripetal acceleration.
-Longitudinal acceleration is filtered with a step weight `min(1, dt*12)`.
-There is no left/right load resolution or suspension travel.
+Contact-force acceleration is filtered with a step weight `min(1, dt*12)`.
+Aerodynamic drag and road gravity act through the CG in this approximation, so
+they contribute to deceleration but not directly to the pitch moment. Engine
+braking, service braking, traction and rolling resistance act at road level and
+do contribute to transfer. Using total deceleration here incorrectly unloads the
+rear under high-speed aero drag, even in neutral. This is the CG-drag pitch
+equilibrium described in the [Vehicle Body equations](https://www.mathworks.com/help/sdl/ref/vehiclebody.html).
+Separate filtered total acceleration remains available for diagnostics.
+Left/right loading uses a filtered contact-force roll moment:
+
+```text
+lateral_contact_accel = (front_force_body_y + rear_force_y - rolling_force_y)/mass
+filtered_lateral += (lateral_contact_accel-filtered_lateral) * (1-exp(-dt/roll_transfer_response_s))
+roll_moment = mass * filtered_lateral * cg_height
+front_transfer = clamp(roll_moment*front_roll_fraction/front_track, -front_load/2, front_load/2)
+rear_transfer = clamp(roll_moment*(1-front_roll_fraction)/rear_track, -rear_load/2, rear_load/2)
+FL = front_load/2-front_transfer; FR = front_load/2+front_transfer
+RL = rear_load/2-rear_transfer;   RR = rear_load/2+rear_transfer
+```
+
+Positive leftward tyre force loads the right tyres. This uses tyre/contact force,
+not total acceleration including bank gravity: bank gravity already reduces the
+contact force needed to corner. Downforce and longitudinal transfer enter through
+the axle totals; aero is assumed centred left/right and applied through the CG.
+The 0.12-second roll response is a provisional settling approximation, not a
+spring/damper or body-roll solver. It uses the previous substep's filtered force.
+Airborne contact clears its history; wheel loads and forces vanish.
+
+The split conserves each axle's load and clips at zero inside-wheel load. Beyond
+wheel lift it does not redistribute excess roll moment or simulate rollover.
+There is no suspension travel, roll-centre geometry, unsprung mass, camber,
+left/right contact sampling, or yaw moment from unequal longitudinal wheel
+forces. See [tyre loads and roll balance](tyre_loads.md) for setup and validation.
 
 Fuel mass uses US gallons converted to litres times fuel density. Consumption
 uses distance, configured range and a burn factor; it does not integrate engine
@@ -97,6 +162,17 @@ engine_omega_change = (engine_torque - clutch_torque)/engine_inertia * dt
 Clutch engagement ramps with RPM and driven-wheel speed. Neutral, engine-off
 state and the shift interval disengage it. Automatic upshifts require both
 engine RPM and coupled wheel RPM above threshold and rear slip below 0.20.
+Automatic downshifts require engine, coupled wheel and road-speed-equivalent RPM
+below the downshift threshold, and a reconnected clutch. Below idle-equivalent
+speed the box can return to first without waiting for the launch clutch to engage.
+The next ratio must also stay below the automatic upshift threshold, avoiding
+immediate hunting with widely spaced custom ratios.
+
+An automatic downshift blips the engine during the open-clutch shift interval.
+A 0.04 s response target requests torque from the existing engine curve, bounded
+by its closed/full-throttle torque and redline. Engine and axle speeds are never
+assigned to force a match. The blip ends before clutch reconnection; normal engine
+braking remains. Manual shifts retain their existing clutch and throttle behaviour.
 Manual and automatic gear selection share direction-change and over-rev checks.
 
 Tyre reaction torque changes axle angular speed; rear drive torque accelerates
@@ -133,20 +209,35 @@ dv/dt = Fy/mass + gravity_left - u*r
 dr/dt = (a*front_force_body_y - b*rear_force_y)/yaw_inertia
 ```
 
-The implementation updates these sequentially and retains the previous `u` for
-the lateral rotating-frame term. These equations describe the force-driven part;
-additional handling interventions are applied afterward:
+Each Euler step retains the previous `u` for the lateral rotating-frame term.
+These equations describe the force-driven part; additional handling interventions
+are applied within each step:
 
-- Speed and estimated grip restrict steering lock; steering moves at a limited rate.
-- Yaw assistance approaches a grip-limited steering target and limits excess yaw error.
-- Sideslip damping exponentially reduces lateral velocity.
-- Traction/braking assistance adjusts axle angular speeds directly.
+- `steering_assistance` controls an optional speed-only range and digital response rate.
+  Let `s = clamp(speed/steering_reduction_speed_mps, 0, 1)` and
+  `help = assistance_strength*steering_assistance`. Effective lock is
+  `lerp(steering_lock_deg, high_speed_lock_deg, s*help)`. Normalized input maps
+  linearly to that lock. At default help, range is 28 degrees at rest and 4.5
+  degrees from 75 m/s (270 km/h) upward. Help off gives 28 degrees at every speed.
+  Digital steering rate is `lerp(base_rate, min(base_rate, lock/steering_response_s), help)`.
+  Calibrated wheel input bypasses this slew and directly sets the mapped angle
+  each substep. Keyboard override and missing/disconnected bindings use digital slew.
+  Neither range nor rate uses grip, wings, yaw, bank, throttle or slide direction;
+  countersteering uses the same mapping as turn-in. There is no range history.
+  Below 75 m/s, the enabled speed help still changes the mapping as speed changes.
+- `stability_assistance` controls yaw correction, the excess-yaw clamp and
+  exponential sideslip damping. At zero these interventions are absent.
+- `traction_control` and `anti_lock_brakes` independently adjust axle angular speeds.
 - A stopped-car rule clears tiny residual motion in qualifying low-speed conditions.
 - Pit and reverse limits can scale planar velocity directly to a hard cap.
 
 Ground-dependent yaw, sideslip and axle interventions turn off when airborne.
 Steering input scaling remains consistent through brief losses of road contact.
 Assistance therefore changes the response beyond the tyre-force equations.
+All four strengths are multiplied by `assistance_strength`. Defaults retain
+steering assistance and ABS at 1, with stability and traction control at 0.
+The F10 Controls panel exposes all five strengths for the current session;
+telemetry records their values every tick, including mid-session changes.
 
 ## Godot integration boundary
 

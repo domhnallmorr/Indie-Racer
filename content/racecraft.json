@@ -12,6 +12,7 @@
     "passing_status_gap_m": 10.0,
     "passing_commit_min_gap_m": 25.0,
     "passing_commit_max_gap_m": 40.0,
+    "drafting_follow_max_gap_m": 30.0,
     "passing_abandon_gap_m": 60.0,
     "passing_no_progress_s": 50.0,
     "passing_losing_min_gap_m": 20.0,

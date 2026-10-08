@@ -4,6 +4,7 @@ var practice: Node
 var timing: Node
 var active_page := ""
 var driving_was_enabled := true
+var driving_panels_visible := true
 
 @onready var pages: Dictionary = {
 	"session": $Shell/Layout/Content/Pages/RosterPanel,
@@ -49,8 +50,8 @@ func open_page(page_name: String) -> void:
 
 func close_shell() -> void:
 	hide()
-	practice.get_node("HUD/Panel").show()
-	practice.get_node("HUD/BlackBox").show()
+	practice.get_node("HUD/Panel").visible = driving_panels_visible
+	practice.get_node("HUD/BlackBox").visible = driving_panels_visible
 	practice.player.driving_enabled = driving_was_enabled
 	active_page = ""
 
@@ -62,6 +63,13 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	var page_name := ""
 	match event.keycode:
+		KEY_H:
+			if not visible:
+				driving_panels_visible = not driving_panels_visible
+				practice.get_node("HUD/Panel").visible = driving_panels_visible
+				practice.get_node("HUD/BlackBox").visible = driving_panels_visible
+				get_viewport().set_input_as_handled()
+			return
 		KEY_F12: page_name = "session"
 		KEY_F10: page_name = "controls"
 		KEY_8: page_name = "diagnostics"

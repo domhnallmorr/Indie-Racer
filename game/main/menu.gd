@@ -89,8 +89,9 @@ func _show_screen(screen: Screen) -> void:
 	setup_screen.visible = screen == Screen.SETUP
 	weekend_screen.visible = screen == Screen.WEEKEND
 	$Options.visible = screen == Screen.OPTIONS
-	$Title.visible = screen != Screen.OPTIONS
-	$Subtitle.visible = screen != Screen.OPTIONS
+	# The weekend card has its own heading and grows when results are present.
+	$Title.visible = screen not in [Screen.OPTIONS, Screen.WEEKEND]
+	$Subtitle.visible = screen not in [Screen.OPTIONS, Screen.WEEKEND]
 	$Center.offset_top = 160.0 if screen == Screen.SETUP else 48.0
 	options_wheel.capture = ""
 	if screen == Screen.MAIN:
@@ -165,6 +166,9 @@ func _on_start_session(mode: String) -> void:
 
 func _on_practice_pressed() -> void:
 	_on_start_session("practice")
+
+func _on_private_testing_pressed() -> void:
+	_on_start_session("private_testing")
 
 func _on_qualifying_pressed() -> void:
 	_on_start_session("qualifying")

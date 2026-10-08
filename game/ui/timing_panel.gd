@@ -65,7 +65,7 @@ func _process(delta: float) -> void:
 
 func refresh() -> void:
 	var racing: bool = timing.session.session_type == timing.session.SessionType.RACE
-	title.text = "RACE STANDINGS" if racing else ("QUALIFYING TIMING" if timing.session.session_type == timing.session.SessionType.QUALIFYING else "PRACTICE TIMING")
+	title.text = "RACE STANDINGS" if racing else timing.session.display_name().to_upper()+" TIMING"
 	subtitle.text = "Position by laps and track progress" if racing else "Position by best lap • out-lap not counted"
 	var sorted: Array = timing.standings()
 	for i in range(sorted.size()):

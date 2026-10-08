@@ -60,6 +60,33 @@ player/AI participation, drag/downforce, speed gain, release and reset checks.
 `tools/validate_slipstream_pack.gd` exercises a seeded 15-car field already on
 track for one simulated minute, checking active towing, contacts and boundaries.
 Pass `-- --without-tow` for a comparison with the same starting positions.
+Add `--track=indianapolis` to exercise the 2001 IRL field at Indy.
+
+Outside committed corner regions, racecraft follows a leader's established groove for a tow on straights and
+when a straight is approaching within its 100 m corner-exit preview. It waits
+to pull out until the gap reaches the 9 m following reserve plus the 2 m margin
+and the closing distance over the track's lane-blend time plus 0.6 s. Faster
+closure therefore starts the move earlier. The closest car ahead is considered
+first, within the 30 m tactical following range (`drafting_follow_max_gap_m` in
+`content/racecraft.json`). The physical wake still extends 75 m. An established
+attempt more than two seconds
+old can tuck back behind its leader when it remains outside that pull-out window
+and has exited any committed corner region.
+Overlap and unfinished pull-outs keep their commitment. Returning to the tow
+requires front clearance throughout the blend and the normal swept-path/rear-
+traffic checks for every other car. Longitudinal collision guarding remains
+active while following.
+
+AI telemetry reports `drafting`; its existing `opponent` column identifies the
+car being followed in that state. `tools/validate_draft_racecraft.gd` checks Indy
+approach timing, alternate-groove following, stalled-attempt recovery, overlap,
+occupied lanes, rapid closure and tow-disabled behaviour. Add `-- --live` to run
+a real T4-exit approach: seed 860551894 drafted for 4.80 s, pulled out at
+20.53 m, and recorded zero contacts and road departures over 20 simulated seconds.
+The four-second stalled-attempt fixture regained 0.49 peak tow strength without
+contact. The seed-1234, 20-car Indy pack test recorded active towing with zero
+contacts and road departures over one minute. Pack starting positions now scale
+to the number of three-car groups, avoiding overlapping starts above 15 cars.
 
 The reference AI caches track curvature, segment lengths and reference pace
 weights when loading the track. Each braking-envelope query computes dynamic

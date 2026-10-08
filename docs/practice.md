@@ -1,6 +1,7 @@
 # Practice session
 
-F5 starts a 60-minute practice session automatically, with the player in the first
+Choose Race Weekend in the startup menu, select a track, Continue, then Practice
+or Private Testing. Both start a 60-minute session with the player in the first
 configured pit box and the cockpit camera selected. The HUD shows remaining time,
 pit-lane state and the assigned box. At zero it displays SESSION COMPLETE and the
 clock stops. F12 opens the combined session/roster panel, where a 10-lap rolling-
@@ -12,6 +13,22 @@ vehicle/spectator state. F12, 9, F10 and 8 open the Session, Timing, Controls an
 Diagnostics screens in the shared race UI; selecting the active screen, choosing
 Drive or pressing Escape returns to the track. Player driving input is suspended
 while the UI is open, while the session clock and AI continue.
+
+## Private Testing
+
+Private Testing uses the same practice clock, pit departure, fuel, tyre wear,
+lap timing, wings/gearing setup and R reset. It loads only the player vehicle:
+the AI roster is not loaded and no pace car is created. Random race incidents
+are inactive, as in normal practice. All four available tracks support it.
+
+Choose **Private Testing** in the Race Weekend menu, or select it in the F12
+Session panel and start the session. The Session panel can also restart testing
+or switch back to Practice, Qualifying or Race. F10 offers separate steering,
+stability, traction and ABS strengths for experimenting with the player physics;
+changes last until the session restarts. F11 toggles player telemetry.
+
+`tools/validate_private_testing.gd` checks menu launch, all four tracks, solo
+timing, setup access, assist controls, pit departure/reset and clock expiry.
 
 ## Text-file pit-box placement
 
@@ -57,7 +74,7 @@ AI uses its existing arrival and departure schedule with the same engine state.
 Race driving is unchanged; `PlayerState.StallState` reserves SERVICING for future
 pit-stop rules, independently of the session and pit-lane state.
 
-- `Session.session_type`: PRACTICE, with QUALIFYING and RACE reserved enum values.
+- `Session.session_type`: PRACTICE, QUALIFYING, RACE or PRIVATE_TESTING.
 - `Session.practice_duration_seconds`: 3600 by default; editable on the main
   scene's Session node. `remaining_seconds` counts down and clamps at zero.
 - `Session.status`: NOT_STARTED, RUNNING or FINISHED; emits `finished` once on expiry.

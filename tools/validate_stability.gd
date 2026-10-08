@@ -8,6 +8,10 @@ func _initialize() -> void:
 		quit(1)
 		return
 	var failed := false
+	# This regression covers the optional fully assisted keyboard profile.
+	# Default physics now allows oversteer; validate_oversteer covers that profile.
+	config.values.stability_assistance = 1.0
+	config.values.traction_control = 1.0
 	for speed in [20.0,40.0,60.0]:
 		var sim = Model.new()
 		sim.configure(config.values)

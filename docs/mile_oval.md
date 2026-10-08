@@ -30,6 +30,11 @@ https://www.indycar.com/Schedule/2026/Milwaukee-Race1
 
 Roads, apron, pit pavement, ground, buildings and walls use static mesh collisions
 through Godot's `-col` import suffix. Paint and other decoration have no collision.
+At runtime, the racing-surface collider's level rectangular strips are simplified
+using their imported vertices, reducing it from 32,200 to 16,658 triangles.
+Banked and transition strips retain their original triangles, and the visual mesh,
+apron, pit lane and walls retain their imported geometry. The setup runs once per
+track load; vehicle movement and surface stepping remain at 60 Hz.
 The track scene has a player spawn facing the counterclockwise direction.
 Reference and pit paths in `ai/reference_paths.json` use Godot coordinates;
 these are geometry references, not completed racing AI or pit-stop logic.

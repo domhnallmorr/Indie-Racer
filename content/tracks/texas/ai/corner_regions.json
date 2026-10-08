@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "reference_point_count": 1208,
+  "notes": "Hold the selected groove from 20 m before each turn to 20 m beyond its exit. Indices and marker points reference race_line.json; exit indices are exclusive.",
+  "regions": [
+    {
+      "id": "turns_1_2",
+      "entry_index": 153,
+      "exit_index": 513,
+      "entry_point": [
+        294.42359,
+        0.99281,
+        194.93699
+      ],
+      "exit_point": [
+        182.19577,
+        1.15085,
+        -256.79633
+      ]
+    },
+    {
+      "id": "turns_3_4",
+      "entry_index": 695,
+      "exit_index": 1054,
+      "entry_point": [
+        -181.50532,
+        1.17827,
+        -257.0997
+      ],
+      "exit_point": [
+        -296.0935,
+        0.76098,
+        191.77206
+      ]
+    }
+  ],
+  "units": "metres"
+}

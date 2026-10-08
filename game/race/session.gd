@@ -2,7 +2,7 @@ extends Node
 ## Practice clock and lap-limited rolling-start race state.
 signal finished
 signal green_flag
-enum SessionType { PRACTICE, QUALIFYING, RACE }
+enum SessionType { PRACTICE, QUALIFYING, RACE, PRIVATE_TESTING }
 enum Status { NOT_STARTED, FORMATION, RUNNING, FINISHED }
 @export var practice_duration_seconds := 3600.0
 @export var race_laps := 10
@@ -22,6 +22,15 @@ func start_qualifying() -> void:
 	session_type = SessionType.QUALIFYING
 	remaining_seconds = 600.0
 	status = Status.RUNNING
+
+func start_private_testing() -> void:
+	session_type = SessionType.PRIVATE_TESTING
+	remaining_seconds = maxf(0.0, practice_duration_seconds)
+	status = Status.RUNNING
+	advance(0.0)
+
+func display_name() -> String:
+	return ["Practice", "Qualifying", "Race", "Private Testing"][session_type]
 
 func start_race(laps: int = 10) -> void:
 	session_type = SessionType.RACE

@@ -78,5 +78,10 @@ It uses the supplied ICR2 Texas layout and AI lines, scaled to 1.5 miles with
 20°/24° banking and smooth 280 m transitions extending onto the straights. Its scenery and AI pace calibration
 are provisional.
 
+[Surfers Paradise — CART 1995](content/tracks/surfers_paradise/README.md) is an
+experimental 4.51 km street course imported from the supplied scratch-built ICR2 Surfers track
+and LP paths. It includes chicanes, barriers, coastal scenery and 26 pit stalls.
+Choose it in Race Weekend; Private Testing provides a solo session.
+
 Next milestone: tune player handling, then adapt the AI to the new physics before
 developing side-by-side behaviour and passing.

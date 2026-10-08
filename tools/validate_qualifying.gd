@@ -60,8 +60,11 @@ func run() -> void:
 		check(entry.order == expected.find(main._car_id(entry.car)), "Initial race standings use grid")
 		var slot: int = expected.find(main._car_id(entry.car))
 		check(entry.car.global_position.distance_to(main.get_node("MileOval").to_global(main.track_data.grid_transform(slot).origin)) < 4, "Cars spawn in earned slots")
-	main.green_previous_x = main.track_data.green_point.x - 1
 	main.player.global_position = main.get_node("MileOval").to_global(Vector3(main.track_data.green_point.x + 1, 0, 125))
+	main.pace_car.clear_of_track = false
+	main._physics_process(0)
+	check(main.session.status == main.session.Status.FORMATION, "Player leader waits for pace car to clear")
+	main.pace_car.clear_of_track = true
 	main._physics_process(0)
 	check(main.session.status == main.session.Status.RUNNING, "Player leader triggers green")
 	for car in main.ai_cars:

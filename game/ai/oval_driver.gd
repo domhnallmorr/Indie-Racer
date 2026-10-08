@@ -121,7 +121,7 @@ func configure(vehicle: Node3D, race_data: Dictionary, delay: float, record_tele
 		race.resize(race.size()-1)
 	_cache_race_distances()
 	if race_data.get("racing_corridor") is Dictionary:
-		racecraft.configure(race_data.racing_corridor,race,race_data.get("racecraft_tuning",{}))
+		racecraft.configure(race_data.racing_corridor,race,race_data.get("racecraft_tuning",{}),race_data.get("corner_regions",{}))
 		if not racecraft.enabled:
 			push_warning("Invalid or stale racing corridor; using single-line AI")
 	_build_departure()
@@ -243,12 +243,8 @@ func _physics_process(delta: float) -> void:
 	offset.y = 0
 	var curvature := -2.0*offset.x / maxf(offset.length_squared(),1)
 	var p: Dictionary = car.parameters.values
-	var speed: float = absf(car.speed_mps)
-	var normal_g: float = 9.81 * (car.get_floor_normal().y if car.is_on_floor() else 1.0)
-	var capacity: float = p.friction_coefficient*(normal_g+.5*p.air_density_kg_m3*p.downforce_area_m2*speed*speed/p.mass_kg)*p.corner_grip_fraction
-	var lock: float = lerpf(p.steering_lock_deg,p.high_speed_lock_deg,clampf(speed/p.steering_reduction_speed_mps,0,1))
-	var safe_lock: float = rad_to_deg(atan(p.wheelbase_m*capacity/maxf(speed*speed,1)))*p.steering_range_multiplier
-	lock = lerpf(lock,minf(lock,safe_lock),p.assistance_strength)
+	# Invert the same speed-only mapping used by the bicycle model.
+	var lock: float = car.sim.steering_lock_at_speed(Vector2(car.sim.u,car.sim.v).length())
 	var steering := clampf(atan(curvature*p.wheelbase_m)*1.15/deg_to_rad(lock),-1,1)
 	if mode == Mode.FORMATION:
 		desired_speed_kph = formation_speed_kph
@@ -291,7 +287,7 @@ func _physics_process(delta: float) -> void:
 		var row := PackedStringArray()
 		for value in [elapsed,mode,index,position.x,position.z,car.speed_mps*3.6,desired_speed_kph,target_mps*3.6,traffic_reason,throttle,brake,steering,car.sim.gear,car.sim.rpm(),int(car.is_on_floor()),car.get_slide_collision_count(),position.distance_to(_nearest_point(position)) if mode == Mode.RACING else 0]:
 			row.append(str(value))
-		for value in [racecraft.state,racecraft.lane,racecraft.target_lane,str(racecraft.opponent.name) if is_instance_valid(racecraft.opponent) else "",racecraft.passes]:
+		for value in [racecraft.state,racecraft.lane,racecraft.target_lane,racecraft.traffic_target_name(),racecraft.passes]:
 			row.append(str(value))
 		# Numeric fields and identifier-only traffic reasons contain no CSV delimiters.
 		pending_log_rows.append(",".join(row))
@@ -613,7 +609,7 @@ func _path_merge_clear(position: Vector3) -> bool:
 			# projection can discard them before they reach the merge.
 			var coordinates: Vector2 = racecraft.coordinates(self,other)
 			longitudinal = fposmod(coordinates.x-race_distances[route_join_index]+race_length_m*.5,race_length_m)-race_length_m*.5
-			lateral = (racecraft.inner[route_join_index]-end).dot(right)+coordinates.y+8.0
+			lateral = (racecraft.inner[route_join_index]-end).dot(right)+coordinates.y+racecraft.lateral_half_width(racecraft.inner[route_join_index],racecraft.outer[route_join_index])
 		var minimum_gap := INF
 		var maximum_gap := -INF
 		# Protect the whole lateral crossing, not just the final join point.

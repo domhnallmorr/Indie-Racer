@@ -8,6 +8,8 @@ var lane := 0.0
 var target_lane := 0.0
 var state := "clear"
 var opponent: Node3D
+var draft_leader: Node3D
+const Slipstream = preload("res://game/vehicle/slipstream.gd")
 var committed_s := 0.0
 var best_opponent_gap := INF
 var no_progress_s := 0.0
@@ -19,8 +21,13 @@ var aborted := 0
 var nearby: Array[Dictionary] = []
 var own := Vector2.ZERO
 var enabled := false
+var physical_corridor_width := false
 var lane_change_blocked := false
 var lane_clear_seconds := 0.0
+var corner_id := ""
+var corner_lane := 0.0
+var corner_regions := PackedStringArray()
+var authored_corners := false
 const LANE_RESUME_CLEAR_S := .35
 const QUEUE_REPLAN_S := 2.0
 var queue_car: Node3D
@@ -38,6 +45,7 @@ const TUNING_DEFAULTS := {
 	"passing_status_gap_m": 10.0,
 	"passing_commit_min_gap_m": 25.0,
 	"passing_commit_max_gap_m": 40.0,
+	"drafting_follow_max_gap_m": 30.0,
 	"passing_abandon_gap_m": 110.0,
 	"passing_losing_min_gap_m": 20.0,
 	"passing_losing_gap_growth_m": 8.0,
@@ -66,6 +74,7 @@ var closing_speed_mps := 0.8
 var passing_status_gap_m := 10.0
 var passing_commit_min_gap_m := 25.0
 var passing_commit_max_gap_m := 40.0
+var drafting_follow_max_gap_m := 30.0
 var passing_abandon_gap_m := 110.0
 var passing_losing_min_gap_m := 20.0
 var passing_losing_gap_growth_m := 8.0
@@ -99,8 +108,12 @@ var projection_points := PackedVector2Array()
 var projection_blocks: Array[Rect2] = []
 var projection_cache: Dictionary = {}
 
-func configure(data: Dictionary, race: PackedVector3Array, overrides: Dictionary = {}) -> void:
+func configure(data: Dictionary, race: PackedVector3Array, overrides: Dictionary = {}, corner_data: Dictionary = {}) -> void:
 	enabled = false
+	physical_corridor_width = bool(data.get("physical_corridor_width",false))
+	_reset_corner_commitment()
+	corner_regions.clear()
+	authored_corners = false
 	projection_points.clear()
 	projection_blocks.clear()
 	# Detach on reconfiguration: this cache may be shared by drivers which
@@ -145,7 +158,87 @@ func configure(data: Dictionary, race: PackedVector3Array, overrides: Dictionary
 		for i in range(first,mini(first+PROJECTION_BLOCK_SIZE,race.size())):
 			bounds = bounds.expand(projection_points[(i+1)%race.size()])
 		projection_blocks.append(bounds)
+	_configure_corner_regions(corner_data,race)
 	enabled = true
+
+func _configure_corner_regions(data: Dictionary, race: PackedVector3Array) -> void:
+	corner_regions.resize(race.size())
+	corner_regions.fill("")
+	if not data.is_empty() and _load_corner_regions(data,race):
+		authored_corners = true
+		return
+	if not data.is_empty():
+		push_warning("Invalid or stale corner regions; using curvature fallback")
+	corner_regions.fill("")
+	# Build a stable fallback from road centre, independent of the racing
+	# groove's lateral movement. Hysteresis and 50 m of straight retain the
+	# commitment across vertex noise. Two laps warm up regions crossing the seam.
+	var bends := PackedFloat32Array()
+	for i in range(race.size()):
+		var a := (inner[posmod(i-12,race.size())]+outer[posmod(i-12,race.size())])*.5
+		var b := (inner[i]+outer[i])*.5
+		var c := (inner[(i+12)%race.size()]+outer[(i+12)%race.size()])*.5
+		var before := Vector2(b.x-a.x,b.z-a.z)
+		var after := Vector2(c.x-b.x,c.z-b.z)
+		bends.append((after.normalized()-before.normalized()).length()/maxf((before.length()+after.length())*.5,.001))
+	var active := false
+	var clear_m := 0.0
+	for step in range(race.size()*2):
+		var i := step%race.size()
+		if bends[i] > .0015:
+			active = true
+			clear_m = 0.0
+		elif bends[i] < .0007:
+			clear_m += race[i].distance_to(race[posmod(i-1,race.size())])
+			if clear_m >= 50.0:
+				active = false
+		else:
+			clear_m = 0.0
+		corner_regions[i] = "curve" if active else ""
+
+func _load_corner_regions(data: Dictionary, race: PackedVector3Array) -> bool:
+	if data.get("schema_version") != 1 or data.get("units") != "metres" or data.get("reference_point_count") != race.size() or not data.get("regions") is Array or data.regions.is_empty():
+		return false
+	var names := {}
+	for region in data.regions:
+		if not region is Dictionary or not region.get("id") is String or region.id.is_empty() or names.has(region.id):
+			return false
+		names[region.id] = true
+		for marker in ["entry","exit"]:
+			var index_value = region.get(marker+"_index")
+			var point = region.get(marker+"_point")
+			if not (index_value is float or index_value is int) or not is_finite(index_value) or index_value != floorf(index_value) or index_value < 0 or index_value >= race.size():
+				return false
+			if not point is Array or point.size() != 3:
+				return false
+			for value in point:
+				if not (value is float or value is int) or not is_finite(value):
+					return false
+			if race[int(index_value)].distance_to(Vector3(point[0],point[1],point[2])) > .01:
+				return false
+		var count := posmod(int(region.exit_index)-int(region.entry_index),race.size())
+		if count == 0:
+			return false
+		for step in range(count):
+			var i := (int(region.entry_index)+step)%race.size()
+			if not corner_regions[i].is_empty():
+				return false
+			corner_regions[i] = region.id
+	return true
+
+func _reset_corner_commitment() -> void:
+	corner_id = ""
+	corner_lane = 0.0
+
+func _update_corner_commitment(driver) -> void:
+	if launch_weight > 0.0 or green_launch_lane_hold_remaining_s > 0.0 or corner_regions.is_empty():
+		_reset_corner_commitment()
+		return
+	var region := corner_regions[posmod(driver.index,corner_regions.size())]
+	if region != corner_id:
+		corner_id = region
+		# Preserve the selected destination so an existing safe blend can finish.
+		corner_lane = target_lane if not region.is_empty() else 0.0
 
 func _load_tuning(overrides: Dictionary) -> void:
 	var values: Dictionary = TUNING_DEFAULTS.duplicate()
@@ -165,6 +258,7 @@ func _load_tuning(overrides: Dictionary) -> void:
 	passing_status_gap_m = values.passing_status_gap_m
 	passing_commit_min_gap_m = values.passing_commit_min_gap_m
 	passing_commit_max_gap_m = values.passing_commit_max_gap_m
+	drafting_follow_max_gap_m = values.drafting_follow_max_gap_m
 	passing_abandon_gap_m = values.passing_abandon_gap_m
 	passing_losing_min_gap_m = values.passing_losing_min_gap_m
 	passing_losing_gap_growth_m = values.passing_losing_gap_growth_m
@@ -197,6 +291,7 @@ func _merge_tuning(values: Dictionary, incoming: Dictionary, source: String) -> 
 		values[key] = float(value)
 
 func begin_green_launch(formation_lane: float, lateral_m: float = NAN, grid_row: int = 0, initial_speed_mps: float = 0.0) -> void:
+	_reset_corner_commitment()
 	# Formation gaps are deliberately tight. Let the whole field take throttle
 	# together in its existing row before converging on RACE. This avoids a
 	# side-by-side pair steering into the same groove at the green flag.
@@ -236,13 +331,23 @@ func track_lane_point(driver, distance: float, lateral_m: float) -> Vector3:
 	var at: float = fposmod(driver.race_distances[driver.index]+distance,driver.race_length_m)
 	var low: Vector3 = driver._sample_path(inner,driver.race_distances,at)
 	var high: Vector3 = driver._sample_path(outer,driver.race_distances,at)
-	return low.lerp(high,clampf((lateral_m+8.0)/16.0,0.0,1.0))
+	var half := lateral_half_width(low,high)
+	return low.lerp(high,clampf((lateral_m+half)/(half*2.0),0.0,1.0))
+
+func lateral_half_width(low: Vector3, high: Vector3) -> float:
+	# Existing oval packages retain their calibrated coordinate convention.
+	# Street courses opt into actual metres across their variable-width road.
+	return maxf(.001,Vector2(high.x-low.x,high.z-low.z).length()*.5) if physical_corridor_width else 8.0
 
 func speed_factor() -> float:
 	# Neutral by default: committing to a pass must not create extra pace.
 	# Retain the tuning hook for explicit track overrides, not a simulated tow.
 	var commitment := maxf(absf(lane),absf(target_lane)) if opponent != null else 0.0
 	return lerpf(1.0,passing_speed_factor,commitment)
+
+func traffic_target_name() -> String:
+	var target := opponent if is_instance_valid(opponent) else draft_leader
+	return str(target.name) if is_instance_valid(target) else ""
 
 func _points(values: Array, count: int) -> PackedVector3Array:
 	var result := PackedVector3Array()
@@ -299,7 +404,7 @@ func coordinates(driver, vehicle: Node3D) -> Vector2:
 	var low := inner[best_index].lerp(inner[next],best_t)
 	var high := outer[best_index].lerp(outer[next],best_t)
 	var outward := Vector2(high.x-low.x,high.z-low.z).normalized()
-	var result := Vector2(lerpf(driver.race_distances[best_index],driver.race_distances[best_index+1],best_t),(point-Vector2(low.x,low.z)).dot(outward)-8.0)
+	var result := Vector2(lerpf(driver.race_distances[best_index],driver.race_distances[best_index+1],best_t),(point-Vector2(low.x,low.z)).dot(outward)-lateral_half_width(low,high))
 	# At most one exact-position result per observed vehicle. Bound removed cars too.
 	if projection_cache.size() >= 128:
 		projection_cache.clear()
@@ -314,7 +419,10 @@ func gap(driver, s: float) -> float:
 	return fposmod(s-own.x+driver.race_length_m*.5,driver.race_length_m)-driver.race_length_m*.5
 
 func update(driver, delta: float) -> void:
+	var previous_draft_leader := draft_leader
+	draft_leader = null
 	if not enabled or driver.mode != 2:
+		_reset_corner_commitment()
 		return
 	committed_s += delta
 	cooldown_s = maxf(0,cooldown_s-delta)
@@ -353,6 +461,7 @@ func update(driver, delta: float) -> void:
 		# Release the launch constraint on time, not on an empty neighbouring
 		# lane. Normal planning and physical side-room protection take over.
 		launch_weight = move_toward(launch_weight,0.0,maxf(8.0,driver.car.speed_mps)*delta/lane_blend_distance_m)
+	_update_corner_commitment(driver)
 	if is_instance_valid(opponent):
 		var separation := gap(driver,coordinates(driver,opponent).x)
 		if best_opponent_gap == INF or separation < best_opponent_gap-.5:
@@ -420,9 +529,19 @@ func update(driver, delta: float) -> void:
 				# commands a defensive lane change before overlap.
 				if opponent == null:
 					state = "alongside" if absf(other.gap) < alongside_gap_m else "leaving_room"
+	var draft_lane := _draft_follow_lane(driver,previous_draft_leader)
+	if is_finite(draft_lane):
+		desired = draft_lane
+		if opponent != null:
+			aborted += 1
+		opponent = null
+		best_opponent_gap = INF
+		no_progress_s = 0.0
+		losing_attempt_s = 0.0
+		state = "drafting"
 	# Prefer an early pass, but also let a traffic-limited car leave a close
 	# queue. Lane checks must verify enough room to pull out at the current gap.
-	if opponent == null and state == "clear" and cooldown_s <= 0:
+	if corner_id.is_empty() and opponent == null and state == "clear" and cooldown_s <= 0:
 		var leader: Dictionary = {}
 		for other in nearby:
 			if other.gap > 0 and other.gap < passing_commit_max_gap_m and absf(other.lateral-own.y) < 5:
@@ -448,14 +567,18 @@ func update(driver, delta: float) -> void:
 						state = "passing_inside" if leader.gap < passing_status_gap_m and desired < 0 else ("passing_outside" if leader.gap < passing_status_gap_m and desired > 0 else "closing")
 						break
 	desired = _reconsider_queued_pass(driver,desired,delta)
+	if not corner_id.is_empty():
+		desired = corner_lane
+		if state == "clear":
+			state = "corner_hold"
 	# Never cross through another car to return to the ideal line or change lanes.
-	if desired != target_lane and not lane_clear(driver,desired,opponent):
+	if desired != target_lane and not lane_clear(driver,desired,opponent,draft_leader):
 		desired = target_lane
 		state = "holding_lane"
 	target_lane = desired
 	# Stop immediately if the swept corridor becomes occupied. Resume only
 	# after sustained clearance, rather than restarting at every threshold flicker.
-	if not is_equal_approx(lane,target_lane) and not lane_clear(driver,target_lane,opponent):
+	if not is_equal_approx(lane,target_lane) and not lane_clear(driver,target_lane,opponent,draft_leader):
 		lane_change_blocked = true
 		lane_clear_seconds = 0.0
 	elif lane_change_blocked and not is_equal_approx(lane,target_lane):
@@ -471,7 +594,76 @@ func update(driver, delta: float) -> void:
 	if opponent == null and state == "clear" and absf(lane) > .01:
 		state = "returning"
 
+func _draft_follow_lane(driver, previous_leader: Node3D) -> float:
+	if not corner_id.is_empty():
+		return NAN
+	# Stay in the wake on a straight (including the final part of its exit),
+	# then pull out with enough time for the lane blend at the closing speed.
+	# Do not interrupt overlap, a fresh attack, launch or an unfinished pull-out.
+	if launch_weight > 0.0 or green_launch_lane_hold_remaining_s > 0.0 or not Slipstream.eligible(driver.car) or driver.car.speed_mps < 45.0:
+		return NAN
+	if opponent != null:
+		if committed_s < 2.0 or not is_equal_approx(lane,target_lane) or gap(driver,coordinates(driver,opponent).x) <= alongside_gap_m:
+			return NAN
+	if state in ["alongside","leaving_room"]:
+		return NAN
+	var leader: Dictionary = {}
+	for other in nearby:
+		if other.gap > alongside_gap_m and other.gap <= minf(drafting_follow_max_gap_m,Slipstream.WAKE_LENGTH_M):
+			if leader.is_empty() or other.gap < leader.gap:
+				leader = other
+	if leader.is_empty() or not Slipstream.eligible(leader.car) or leader.car.speed_mps < 45.0:
+		return NAN
+	# Use a broad stencil so authored vertex noise does not break a tow.
+	var straight := false
+	for distance in [0.0,100.0]:
+		var a: Vector3 = driver._ahead(distance-25.0)
+		var b: Vector3 = driver._ahead(distance)
+		var c: Vector3 = driver._ahead(distance+25.0)
+		var curvature := ((c-b).normalized()-(b-a).normalized()).length()/25.0
+		if curvature < .0015:
+			straight = true
+	if not straight:
+		return NAN
+	var leader_driver = leader.car.get_node_or_null("Driver")
+	var follow_lane := 0.0
+	if leader_driver != null:
+		var leader_craft = leader_driver.racecraft
+		if leader_craft.launch_weight > 0.0 or not is_equal_approx(leader_craft.lane,leader_craft.target_lane):
+			return NAN
+		follow_lane = leader_craft.lane
+	else:
+		var base := lane_lateral(driver,0.0,leader.gap)
+		var side := -1.0 if leader.lateral < base else 1.0
+		var span := lane_lateral(driver,side,leader.gap)-base
+		if absf(span) < .01:
+			return NAN
+		follow_lane = side*clampf((leader.lateral-base)/span,0.0,1.0)
+	var closing := maxf(0.0,maxf(driver.car.speed_mps,driver.desired_speed_kph/3.6)-leader.car.speed_mps)
+	var pull_out_s := lane_blend_distance_m/maxf(driver.car.speed_mps,8.0)+rear_merge_settle_s
+	var pull_out_gap := collision_guard_gap_m+rear_merge_bumper_margin_m+closing*pull_out_s
+	# Finish a safe tuck-in before reacting to the pace/tow change it creates.
+	# Otherwise a rising requested speed can reverse the move halfway through.
+	var finishing_follow: bool = previous_leader == leader.car and is_equal_approx(target_lane,follow_lane) and not is_equal_approx(lane,follow_lane)
+	if leader.gap <= pull_out_gap and not finishing_follow:
+		return NAN
+	if not lane_clear(driver,follow_lane,null,leader.car):
+		return NAN
+	draft_leader = leader.car
+	return follow_lane
+
+func _front_merge_clear(driver, other: Dictionary, candidate: float) -> bool:
+	# Tucking behind a leader is safe only if the whole blend retains the
+	# following reserve. Other cars still undergo the ordinary swept-path check.
+	var blend_s := absf(candidate-lane)*lane_blend_distance_m/maxf(driver.car.speed_mps,8.0)
+	var closing := maxf(0.0,driver.car.speed_mps-other.car.speed_mps)
+	return other.gap-closing*(blend_s+rear_merge_settle_s) > collision_guard_gap_m
+
 func _reconsider_queued_pass(driver, desired: float, delta: float) -> float:
+	if not corner_id.is_empty():
+		queue_car = null
+		queue_seconds = 0.0
+		return desired
 	# A committed pass can become a same-lane queue when its target (or another
 	# car) takes that groove. Reconsider after sustained traffic-limited pace,
 	# without interrupting a lane transition or a genuine side-by-side attempt.
@@ -556,9 +748,11 @@ func _rear_bumper_clearance(driver, other: Node3D, separation: float, candidate:
 	var closing_speed: float = maxf(0.0,other.speed_mps-driver.car.speed_mps)
 	return -separation-_body_end_extent(driver.car,true)-_body_end_extent(other,false)-closing_speed*(blend_s+rear_merge_settle_s)
 
-func lane_clear(driver, candidate: float, ignored: Node3D = null) -> bool:
+func lane_clear(driver, candidate: float, ignored: Node3D = null, following: Node3D = null) -> bool:
 	var destination := lane_lateral(driver,candidate,0)
 	for other in nearby:
+		if other.car == following and _front_merge_clear(driver,other,candidate):
+			continue
 		# Rear traffic uses bumper clearance over the remaining manoeuvre, not
 		# the broad forward planning window. This applies to ignored targets too.
 		if other.gap < 0 and _rear_bumper_clearance(driver,other.car,other.gap,candidate) > rear_merge_bumper_margin_m:
@@ -604,7 +798,7 @@ func lane_lateral(driver, choice: float, distance: float) -> float:
 	var high: Vector3 = driver._sample_path(outer,driver.race_distances,at)
 	var point := path_point(driver,distance,choice)
 	var outward := Vector2(high.x-low.x,high.z-low.z).normalized()
-	return Vector2(point.x-low.x,point.z-low.z).dot(outward)-8.0
+	return Vector2(point.x-low.x,point.z-low.z).dot(outward)-lateral_half_width(low,high)
 
 func path_point(driver, distance: float, choice: float) -> Vector3:
 	var base: Vector3 = driver._ahead(distance)
@@ -632,10 +826,13 @@ func _side_room_bounds(driver) -> Vector3:
 	# RACE and a passing groove can converge as the ideal line crosses the
 	# track. An established neighbour needs physical room even when neither
 	# car is changing its lane selection. Preserve their current lateral order.
-	var minimum := -8.0
-	var maximum := 8.0
+	var half := lateral_half_width(inner[driver.index],outer[driver.index]) if enabled else 8.0
+	var minimum := -half
+	var maximum := half
 	var alongside := false
 	for other in nearby:
+		if other.car == draft_leader and _front_merge_clear(driver,other,target_lane):
+			continue
 		if absf(other.gap) >= 18.0:
 			continue
 		var side: float = own.y-other.lateral
@@ -656,9 +853,9 @@ func _side_room_bounds(driver) -> Vector3:
 			var clearance := _rear_bumper_clearance(driver,other.car,other.gap,target_lane)
 			weight *= 1.0-smoothstep(0.0,rear_merge_bumper_margin_m,clearance)
 		if side > 0:
-			minimum = maxf(minimum,lerpf(-8.0,other.lateral+3.2,weight))
+			minimum = maxf(minimum,lerpf(-half,other.lateral+3.2,weight))
 		else:
-			maximum = minf(maximum,lerpf(8.0,other.lateral-3.2,weight))
+			maximum = minf(maximum,lerpf(half,other.lateral-3.2,weight))
 	return Vector3(minimum,maximum,1.0 if alongside else 0.0)
 
 func _apply_side_room(driver, distance: float, point: Vector3, bounds: Vector3) -> Vector3:
@@ -667,11 +864,17 @@ func _apply_side_room(driver, distance: float, point: Vector3, bounds: Vector3) 
 	var at: float = fposmod(driver.race_distances[driver.index]+distance,driver.race_length_m)
 	var low: Vector3 = driver._sample_path(inner,driver.race_distances,at)
 	var high: Vector3 = driver._sample_path(outer,driver.race_distances,at)
+	return clamp_corridor_point(point,low,high,bounds)
+
+func clamp_corridor_point(point: Vector3, low: Vector3, high: Vector3, bounds: Vector3) -> Vector3:
+	if bounds.z == 0.0:
+		return point
 	var across := high-low
-	var lateral := (point-low).dot(across)/maxf(across.length_squared(),.001)*16.0-8.0
+	var half := lateral_half_width(low,high)
+	var lateral := (point-low).dot(across)/maxf(across.length_squared(),.001)*(half*2.0)-half
 	# If squeezed from both sides, hold the present physical lane.
 	lateral = clampf(lateral,bounds.x,bounds.y) if bounds.x <= bounds.y else own.y
-	return low.lerp(high,clampf((lateral+8.0)/16.0,0,1))
+	return low.lerp(high,clampf((lateral+half)/(half*2.0),0,1))
 
 func planner_samples(driver, count: int) -> PackedVector3Array:
 	var result := PackedVector3Array()
@@ -716,17 +919,18 @@ func planner_samples(driver, count: int) -> PackedVector3Array:
 func traffic_speed(driver, request: float) -> float:
 	# A legal target does not guarantee the body stays on it. Shed speed early
 	# when tracking error consumes the road-edge reserve, retaining lane priority.
-	if absf(own.y) <= road_edge_speed_start_m-.15:
+	var edge_start := minf(road_edge_speed_start_m,lateral_half_width(inner[driver.index],outer[driver.index])) if physical_corridor_width else road_edge_speed_start_m
+	if absf(own.y) <= edge_start-.15:
 		edge_entry_speed_mps = INF
-	if absf(own.y) > road_edge_speed_start_m:
+	if absf(own.y) > edge_start:
 		if not is_finite(edge_entry_speed_mps):
 			edge_entry_speed_mps = maxf(15.0,minf(request,driver.car.speed_mps))
 		# Anchor the cap to entry speed. Multiplying the current speed every
 		# tick caused maximum braking throughout even a 10 cm tracking overshoot.
-		var edge_cap := edge_entry_speed_mps*clampf(1.0-(absf(own.y)-road_edge_speed_start_m)*.15,.65,1.0)
+		var edge_cap := edge_entry_speed_mps*clampf(1.0-(absf(own.y)-edge_start)*.15,.65,1.0)
 		# A genuine departure beyond the car-centre road limit still needs a
 		# strong recovery response, independent of the small-overshoot correction.
-		if absf(own.y) > 9.0:
+		if absf(own.y) > (edge_start+1.0 if physical_corridor_width else 9.0):
 			edge_cap = minf(edge_cap,maxf(15.0,edge_entry_speed_mps*.35))
 		if edge_cap < request:
 			request = edge_cap
@@ -750,7 +954,8 @@ func traffic_speed(driver, request: float) -> float:
 		var low: Vector3 = driver._sample_path(inner,driver.race_distances,at)
 		var high: Vector3 = driver._sample_path(outer,driver.race_distances,at)
 		var across := high-low
-		var intended := (ahead(driver,other.gap,side_bounds)-low).dot(across)/maxf(across.length_squared(),.001)*16.0-8.0
+		var half := lateral_half_width(low,high)
+		var intended := (ahead(driver,other.gap,side_bounds)-low).dot(across)/maxf(across.length_squared(),.001)*(half*2.0)-half
 		var separated: bool = absf(other.lateral-own.y) >= 3.1 and absf(other.lateral-intended) >= 3.1
 		if separated:
 			continue

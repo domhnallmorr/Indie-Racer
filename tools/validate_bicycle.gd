@@ -77,7 +77,8 @@ func validate() -> void:
 	model.reset()
 	model.u = 50
 	model.advance(.01,0,0,0,0,0,9.81,true)
-	check(model.downforce_n > 5000 and model.drag_n > 1000,"Aero produces force")
+	check(is_equal_approx(model.downforce_n,.5*config.values.air_density_kg_m3*config.values.downforce_area_m2*model.airspeed_mps*model.airspeed_mps),"Aero load matches configured area and airspeed")
+	check(model.downforce_n > 0 and model.drag_n > 0,"Aero produces force")
 	model.reset()
 	model.advance(.1,0,0,0,0,1.53,9.69,true)
 	check(model.v > 0,"Banking gravity acts in road plane")

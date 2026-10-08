@@ -1,5 +1,50 @@
 # Performance investigation
 
+## Mile Oval road collider (4 October)
+
+`content/tracks/mile_oval/surface/road_collision.gd` simplifies the imported road
+collider once at scene load. Each level rectangular strip uses two triangles
+instead of 40. The current road falls from 32,200 to 16,658 collision triangles
+(48.3% fewer), with 409 strips simplified. All banked and transition triangles
+are copied exactly. The visual mesh, apron, pit lane and barriers retain their
+imported geometry; movement, stepping and grounding remain at 60 Hz.
+
+The helper uses the collider's existing vertices, rather than reconstructing it
+from reference paths or mesh vertices. Godot's imported collision vertices have
+slightly different rounding, and reconstruction changed step decisions in the
+initial trial. Rectangle corners, area and winding are checked before replacement;
+unexpected strip layouts retain the original detail. No separate baked collision
+asset is needed after a GLB reexport.
+
+`tools/validate_mile_road_collision.gd` checked 32,208 support rays, including every
+original triangle centroid and both sides of the straight road edges. Heights,
+normals and coverage matched exactly, and all 15,759 sloped triangles survived
+unchanged. Car contacts, wall contacts, visual grounding, surface reentry and
+road/pit route validation also passed.
+
+Four headless 20-car, seed-42 live starts ran in original/simplified/simplified/
+original order, measuring 20 seconds after green. Both variants stayed grounded
+and reported no false wall impacts from the road. Repeated runs of each variant
+had identical position/speed checkpoints. Changing the triangle topology causes
+small physics differences: the largest original/simplified checkpoint separation
+was 0.056 m, and the largest speed difference was 0.0192 m/s. This is a short
+racing fixture rather than a guarantee of identical long-term race outcomes.
+
+Live timing varied substantially between runs, including unrelated planner and
+tow costs, so their percentage differences are not used as an isolated gain.
+The installed collider's controlled 8,000-pose surface-step replay measured 2.61
+to 1.81 ms per 20-car field tick (30.4% less step-query CPU work), using warm-up
+batches and alternating ABBA order. Step results matched exactly at every pose.
+Raw results are in `builds/surface_step_review/mile_oval_mesh_implementation.json`;
+the live-run summary is `builds/surface_step_review/implementation_live_summary.json`.
+Headless query timings do not measure rendered FPS.
+
+For a repeatable live comparison, run `tools/profile_texas_start.gd` with
+`-- --track=mile_oval --seconds=20 --seed=42 --instrument`, then add
+`--original-road-collider` to restore the original imported road for the baseline.
+That diagnostic option preserves the rest of the scene and writes a separate
+`_original_road` result file. Run benchmarks sequentially.
+
 ## GPU utilisation during the Mile Oval test (3 October)
 
 Sampled the RTX 4060 Ti 16 GB with NVIDIA's `nvidia-smi` at one-second intervals

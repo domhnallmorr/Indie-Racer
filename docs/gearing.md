@@ -21,6 +21,20 @@ Actual top speed also depends on engine torque, drag, rolling resistance and
 tyre slip. The existing automatic shift logic and engine curve remain active.
 Gearing changes do not change redline or add engine power.
 
+Automatic downshifts wait for clutch reconnection and check road and wheel RPM
+as well as engine RPM. A falling engine speed during a shift, or rear-wheel slip
+under braking, cannot by itself trigger another downshift. Automatic downshifts
+also blip the throttle while the clutch is open to reduce the rear-axle braking
+shock when it reconnects. Manual shifting behaviour is unchanged.
+
+`tools/validate_gear_shifts.gd` covers acceleration, downshift timing, rev matching,
+stopped recovery and the recorded Surfers Paradise braking entry at 60/120 Hz.
+In the 4 October 19:08 recording's 50.017–52.700 s window, replaying the same
+controls with the corrected automatic gearbox reduced peak body sideslip from
+22.06° to 11.18°. It selected 5th, 4th and 3rd rather than cascading into 2nd.
+This is an open-loop physics comparison, not a full driving or lap-time test;
+the remaining entry slide still needs separate handling work.
+
 ## Texas baseline
 
 Texas now defaults to a 3.40 final drive, using the existing gear ratios

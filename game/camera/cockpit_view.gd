@@ -1,6 +1,10 @@
 extends Node3D
 ## Visual cockpit only. Mirror cameras share the main world; no vehicle physics.
 const DASH = preload("res://game/ui/cockpit_dashboard.gd")
+const DEFAULT_EYE_HEIGHT := .80
+const MIN_EYE_HEIGHT := .73
+const MAX_EYE_HEIGHT := .94
+const DEFAULT_FOV := 65.0
 var camera: Camera3D
 var interior: Node3D
 var mirror_views: Array[SubViewport] = []
@@ -9,6 +13,10 @@ var rear_cameras: Array[Camera3D] = []
 var rear_local_poses: Array[Transform3D] = []
 var dashboard_view: SubViewport
 var virtual_mirror: PanelContainer
+var gear_lever: Node3D
+var last_gear := ""
+var shift_pulse := 0.0
+var shift_direction := 1.0
 
 func _ready() -> void:
 	position = get_parent().get_node("Visual").get_meta("cockpit_offset",Vector3.ZERO)
@@ -19,10 +27,6 @@ func _ready() -> void:
 		mesh.layers = 4
 		if mesh.name.begins_with("Mirror"):
 			mesh.hide()
-		if mesh.name.begins_with("Instrument"):
-			mesh.scale.x *= get_parent().get_node("Visual").get_meta("dashboard_width_scale",1.0)
-			mesh.scale.y *= get_parent().get_node("Visual").get_meta("dashboard_width_scale",1.0)
-			mesh.position.z += get_parent().get_node("Visual").get_meta("dashboard_rearward_offset",0.0)
 		if exterior_nose != null:
 			for surface in range(mesh.mesh.get_surface_count()):
 				var original = mesh.get_active_material(surface)
@@ -30,24 +34,25 @@ func _ready() -> void:
 					var paint = original.duplicate()
 					paint.albedo_color = exterior_nose.get_active_material(0).albedo_color
 					mesh.set_surface_override_material(surface,paint)
+	gear_lever = interior.find_child("GearLeverPivot", true, false)
 	# Hide the exterior driver and small placeholder cockpit parts only from this camera.
 	for mesh in get_parent().get_node("Visual").find_children("*", "MeshInstance3D", true, false):
 		mesh.layers = 2
-		if mesh.name.begins_with("Driver") or mesh.name.begins_with("Helmet") or mesh.name.begins_with("Mirror") or mesh.name.begins_with("SteeringWheel") or mesh.name.begins_with("CockpitRim"):
+		if mesh.name.begins_with("Driver") or mesh.name.begins_with("Helmet") or mesh.name.begins_with("Mirror") or mesh.name.begins_with("SteeringWheel") or mesh.name.begins_with("CockpitRim") or mesh.name.begins_with("CockpitLining"):
 			mesh.layers = 16
 	camera = Camera3D.new()
 	camera.name = "DriverEye"
 	camera.doppler_tracking = Camera3D.DOPPLER_TRACKING_IDLE_STEP
-	camera.position = Vector3(0, .84, .28)
+	camera.position = Vector3(0, DEFAULT_EYE_HEIGHT, .28)
 	camera.rotation_degrees.x = -6
-	camera.fov = 65
+	camera.fov = DEFAULT_FOV
 	camera.near = .025
 	camera.far = 3000
 	camera.cull_mask = 7
 	add_child(camera)
 	var display := SubViewport.new()
 	dashboard_view = display
-	display.size = Vector2i(640,320)
+	display.size = Vector2i(960,440)
 	display.disable_3d = true
 	display.render_target_update_mode = SubViewport.UPDATE_ONCE
 	add_child(display)
@@ -55,7 +60,7 @@ func _ready() -> void:
 	dashboard.set_script(DASH)
 	dashboard.player = get_parent()
 	display.add_child(dashboard)
-	_surface("Dashboard", Vector3(0,.59,-.242), Vector2(.44,.22), display, false)
+	_surface("Dashboard", Vector3(0,.58,-.181), Vector2(.374,.172), display, false)
 	var mirror := SubViewport.new()
 	mirror.name = "VirtualMirrorView"
 	mirror.size = Vector2i(960, 180)
@@ -110,26 +115,55 @@ func _add_virtual_mirror(view: SubViewport) -> void:
 	image.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	virtual_mirror.add_child(image)
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
 	# SubViewport cameras do not inherit the car transform. Follow spawn/repositioning.
 	for i in range(rear_cameras.size()):
 		rear_cameras[i].global_transform = global_transform * rear_local_poses[i]
+	# A small spring-return movement follows accepted gear changes, including auto.
+	var gear: String = get_parent().gear_text
+	if gear != last_gear:
+		if not last_gear.is_empty() and active:
+			var next_index := -1 if gear == "R" else gear.to_int()
+			var previous_index := -1 if last_gear == "R" else last_gear.to_int()
+			shift_direction = 1.0 if next_index > previous_index else -1.0
+			shift_pulse = .24
+		last_gear = gear
+	shift_pulse = maxf(0.0, shift_pulse - delta)
+	if gear_lever != null:
+		gear_lever.rotation.x = sin(shift_pulse / .24 * PI) * .09 * shift_direction
 
 func _surface(label: String, pos: Vector3, dimensions: Vector2, viewport: SubViewport, flip: bool) -> void:
-	if label == "Dashboard":
-		dimensions *= get_parent().get_node("Visual").get_meta("dashboard_width_scale",1.0)
-		pos.z += get_parent().get_node("Visual").get_meta("dashboard_rearward_offset",0.0)
 	var panel := MeshInstance3D.new()
 	panel.name = label
-	var quad := QuadMesh.new()
-	quad.size = dimensions
-	panel.mesh = quad
+	# Match the six-sided housing rather than covering its chamfers with a quad.
+	var half := dimensions * .5
+	var c := .027
+	var outline := PackedVector2Array([Vector2(-half.x,-half.y),Vector2(half.x,-half.y),
+		Vector2(half.x,half.y-c),Vector2(half.x-c,half.y),
+		Vector2(-half.x+c,half.y),Vector2(-half.x,half.y-c)])
+	var vertices := PackedVector3Array()
+	var normals := PackedVector3Array()
+	var uvs := PackedVector2Array()
+	for point in outline:
+		vertices.append(Vector3(point.x,point.y,0))
+		normals.append(Vector3(0,0,1))
+		uvs.append(Vector2(point.x/dimensions.x+.5,.5-point.y/dimensions.y))
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = vertices
+	arrays[Mesh.ARRAY_NORMAL] = normals
+	arrays[Mesh.ARRAY_TEX_UV] = uvs
+	arrays[Mesh.ARRAY_INDEX] = PackedInt32Array([0,2,1,0,3,2,0,4,3,0,5,4])
+	var screen_mesh := ArrayMesh.new()
+	screen_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	panel.mesh = screen_mesh
 	panel.position = pos
 	panel.layers = 4
 	panel.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	var material := StandardMaterial3D.new()
 	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	material.albedo_texture = viewport.get_texture()
+	material.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR
 	if flip:
 		material.uv1_scale.x = -1
 		material.uv1_offset.x = 1
@@ -164,8 +198,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			match key:
 				KEY_BRACKETLEFT: camera.fov = maxf(45, camera.fov - 2)
 				KEY_BRACKETRIGHT: camera.fov = minf(85, camera.fov + 2)
-				KEY_PAGEUP: camera.position.y = minf(.94, camera.position.y + .01)
-				KEY_PAGEDOWN: camera.position.y = maxf(.77, camera.position.y - .01)
+				KEY_PAGEUP: camera.position.y = minf(MAX_EYE_HEIGHT, camera.position.y + .01)
+				KEY_PAGEDOWN: camera.position.y = maxf(MIN_EYE_HEIGHT, camera.position.y - .01)
 				KEY_HOME:
-					camera.position.y = .84
-					camera.fov = 65
+					camera.position.y = DEFAULT_EYE_HEIGHT
+					camera.fov = DEFAULT_FOV

@@ -9,6 +9,7 @@ var start := Button.new()
 var paths: Array[String] = []
 var record_ai := CheckButton.new()
 var session_choice := OptionButton.new()
+const SESSION_MODES = ["practice", "race", "qualifying", "private_testing"]
 
 func _ready() -> void:
 	if not embedded:
@@ -34,7 +35,8 @@ func _ready() -> void:
 	session_choice.add_item("Practice")
 	session_choice.add_item("%d-lap rolling-start race" % practice.track_data.race_laps)
 	session_choice.add_item("10-minute qualifying")
-	session_choice.select(["practice", "race", "qualifying"].find(practice.session_mode))
+	session_choice.add_item("Private Testing")
+	session_choice.select(SESSION_MODES.find(practice.session_mode))
 	column.add_child(session_choice)
 	column.add_child(choices)
 	paths = preload("res://game/race/roster_data.gd").discover()
@@ -67,10 +69,11 @@ func _ready() -> void:
 	start.disabled = paths.is_empty()
 	start.pressed.connect(func():
 		var selection: Dictionary = get_tree().root.get_meta("roster_selection", {}).duplicate(true)
-		if paths[choices.selected] != practice.roster_file or session_choice.selected == 2:
+		var selected_file: String = paths[choices.selected] if not paths.is_empty() else practice.roster_file
+		if selected_file != practice.roster_file or session_choice.selected == 2:
 			selection.erase("qualifying_grid")
 			selection.erase("qualifying_results")
-		selection.merge({"file":paths[choices.selected],"seed":int(seed_input.value),"ai_telemetry":record_ai.button_pressed,"session_mode":["practice", "race", "qualifying"][session_choice.selected],"race_laps":practice.track_data.race_laps,"max_fuel_capacity_gal":practice.max_fuel_capacity_gal}, true)
+		selection.merge({"file":selected_file,"seed":int(seed_input.value),"ai_telemetry":record_ai.button_pressed,"session_mode":SESSION_MODES[session_choice.selected],"race_laps":practice.track_data.race_laps,"max_fuel_capacity_gal":practice.max_fuel_capacity_gal}, true)
 		get_tree().root.set_meta("roster_selection", selection)
 		get_tree().reload_current_scene())
 	var weekend := Button.new()
@@ -78,16 +81,28 @@ func _ready() -> void:
 	weekend.pressed.connect(practice._return_to_weekend)
 	column.add_child(weekend)
 	choices.item_selected.connect(func(_index): _preview())
-	session_choice.item_selected.connect(func(_index): _update_start_text())
+	session_choice.item_selected.connect(func(_index):
+		_update_start_text()
+		_preview())
 	_preview()
 	if not embedded:
 		hide()
 
 func _update_start_text() -> void:
 	start.text = "Start %d-lap race" % practice.track_data.race_laps if session_choice.selected == 1 else ("Restart qualifying" if session_choice.selected == 2 else "Restart practice")
+	if session_choice.selected == 3:
+		start.text = "Start Private Testing"
 
 func _preview() -> void:
+	var private_test: bool = session_choice.selected == 3
+	choices.disabled = private_test
+	record_ai.disabled = private_test
+	if private_test:
+		start.disabled = false
+		preview.text = "Player car only. Lap timing, fuel, tyres and pit setup remain available."
+		return
 	if paths.is_empty():
+		start.disabled = true
 		preview.text = "No rosters found"
 		return
 	var model = preload("res://game/race/roster_data.gd").new()

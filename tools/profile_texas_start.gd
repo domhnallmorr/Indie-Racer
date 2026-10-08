@@ -150,6 +150,14 @@ func profile() -> void:
 	root.set_meta("roster_selection",{"track_id":track_id,"file":"res://content/rosters/irl_2001/manifest.json","seed":race_seed,"session_mode":"race","race_laps":20})
 	var main = load("res://game/main/main.tscn").instantiate()
 	root.add_child(main)
+	# Diagnostic comparison: restore the unmodified imported Mile road while
+	# retaining the same scene, cars, physics cadence and visual geometry.
+	var original_road_collider := "--original-road-collider" in OS.get_cmdline_user_args()
+	if original_road_collider:
+		assert(track_id == "mile_oval","Original road comparison is for Mile Oval")
+		var imported = load("res://content/tracks/mile_oval/models/mile_oval.glb").instantiate()
+		main.get_node("MileOval/Geometry/RacingSurface/StaticBody3D/CollisionShape3D").shape = imported.get_node("RacingSurface/StaticBody3D/CollisionShape3D").shape
+		imported.free()
 	# Diagnostic render comparison only; do not change the game's mirror defaults.
 	var no_mirrors := "--no-mirrors" in OS.get_cmdline_user_args()
 	if no_mirrors:
@@ -250,6 +258,7 @@ func profile() -> void:
 	physics.sort()
 	var item := {"baseline":baseline,"cars":main.ai_cars.size(),"tow_ticks":tow_ticks,"median_tick_ms":samples[samples.size()/2],"p95_tick_ms":samples[int(samples.size()*.95)],"p99_tick_ms":samples[int(samples.size()*.99)],"median_physics_ms":physics[physics.size()/2],"p95_physics_ms":physics[int(physics.size()*.95)]}
 	item.track = track_id
+	item.original_road_collider = original_road_collider
 	item.unshared = unshared
 	item.seconds = seconds
 	item.seed = race_seed
@@ -299,7 +308,7 @@ func profile() -> void:
 						totals[key] = totals.get(key,0.0)+node.costs[key]/float(maxi(1,car.costs.ticks))/1000.0
 		print("RACE DRIVER COSTS ",JSON.stringify(totals))
 		item.costs = totals
-	var scenario_suffix := ("_parked" if not parked_pose.is_empty() else "")+("_no_mirrors" if no_mirrors else "")
+	var scenario_suffix := ("_parked" if not parked_pose.is_empty() else "")+("_no_mirrors" if no_mirrors else "")+("_original_road" if original_road_collider else "")
 	var file := FileAccess.open("res://builds/%s_start_%s%s%s%s%s.json" % [track_id,"unshared" if unshared else ("before" if baseline else "after"),"_replay" if not replay_path.is_empty() else ("_driving" if drive_player else ""),"_sync_logs" if synchronized_logs else "","_maximized" if DisplayServer.window_get_mode() == DisplayServer.WINDOW_MODE_MAXIMIZED else "",scenario_suffix],FileAccess.WRITE)
 	file.store_string(JSON.stringify(item,"  "))
 	main.free()

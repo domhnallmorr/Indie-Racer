@@ -1,6 +1,7 @@
 @tool
 extends Node3D
-## Material-only override: imported mesh and physics remain intact.
+## Surface materials and a simpler runtime collider for the flat road strips.
+const RoadCollision = preload("res://content/tracks/mile_oval/surface/road_collision.gd")
 var material: ShaderMaterial
 var grass_material: ShaderMaterial
 var wall_materials: Array[ShaderMaterial] = []
@@ -27,6 +28,8 @@ func _process(_delta: float) -> void:
 		for wall_material in wall_materials:
 			wall_material.set_shader_parameter("world_to_track", get_parent().global_transform.affine_inverse())
 func _apply(node: Node) -> void:
+	if not Engine.is_editor_hint() and node is MeshInstance3D and node.name == "RacingSurface":
+		RoadCollision.apply(node)
 	if node is MeshInstance3D:
 		# Legacy imported standing-start markings; also omitted by the generator.
 		if str(node.name).begins_with("GridSlot"):

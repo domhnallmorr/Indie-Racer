@@ -20,6 +20,11 @@ func validate() -> void:
 		quit(1)
 		return
 	for car in main.ai_cars:
+		# Practice now randomises release over seven minutes. This three-minute
+		# driving regression needs deterministic departures and a long stint.
+		var ai_driver = car.get_node("Driver")
+		ai_driver.release_delay = 4.0+6.0*main.ai_cars.find(car)
+		ai_driver.stint_laps = 20
 		assert(car.physics_ready and not car.human_controlled)
 		assert(car.parameters.values == main.player.parameters.values, "AI and player must share vehicle parameters")
 		assert(car.wheel_input == null, "AI must not read human controls")

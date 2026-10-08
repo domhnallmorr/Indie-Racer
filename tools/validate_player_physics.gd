@@ -64,7 +64,10 @@ func validate() -> void:
 	car.sim.engine_omega = car.sim.rear_omega*car.sim.ratio()
 	for i in range(90):
 		await physics_frame
-		car.drive_step(DT,.2,0,.4)
+		# Request road-wheel angle: raw input from the old grip-limited mapping
+		# would steer much further after the steering-assistance correction.
+		var steering: float = 2.5/car.sim.steering_lock_at_speed(Vector2(car.sim.u,car.sim.v).length())
+		car.drive_step(DT,.2,0,steering)
 	check(car.is_on_floor() and car.track.to_local(car.global_position).y > .5,"Banked surface support")
 	check(car.sim.downforce_n > 1000,"Actual-track aero")
 	car.driving_enabled = true

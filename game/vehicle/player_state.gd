@@ -66,7 +66,7 @@ func configure_tyre_wear(seed_value: int, config_path: String = TYRE_WEAR_CONFIG
 	tyre_wear_rate = tyre_rng.randf_range(float(lower),float(upper))
 
 func tyre_wear_active() -> bool:
-	return session != null and session.session_type in [session.SessionType.PRACTICE, session.SessionType.RACE]
+	return session != null and session.session_type in [session.SessionType.PRACTICE, session.SessionType.RACE, session.SessionType.PRIVATE_TESTING]
 
 func consume_tyre_distance(distance_m: float) -> void:
 	if not tyre_wear_active() or session.status != session.Status.RUNNING:

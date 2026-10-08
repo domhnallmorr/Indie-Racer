@@ -28,6 +28,9 @@ var steering_from := 0.0
 var steering_target := 0.0
 var steering_blend_seconds := 0.0
 var driving_curvature := 0.0
+var steering_lookahead_base_m := 4.0
+var steering_lookahead_time_s := .22
+var steering_lookahead_max_m := 22.0
 
 func configure_performance(sampled: Dictionary, profile: Dictionary) -> void:
 	super.configure_performance(sampled,profile)
@@ -73,6 +76,13 @@ func configure(vehicle: Node3D, race_data: Dictionary, delay: float, record_tele
 		reference_peak_speed = maxf(reference_peak_speed,value)
 		reference_min_speed = minf(reference_min_speed,value)
 	pit_profile = pit
+	for key in ["steering_lookahead_base_m","steering_lookahead_time_s","steering_lookahead_max_m"]:
+		var value = profile.get(key,get(key))
+		if not (value is float or value is int) or not is_finite(value) or value <= 0:
+			profile_error = "Invalid steering lookahead: "+key
+			push_error(profile_error)
+			return
+		set(key,float(value))
 	var entry: Dictionary = car.get_meta("roster_entry")
 	if float(profile.get("reference_lap_s",0)) <= 0 or float(entry.get("icr2_lap_s",0)) <= 0:
 		profile_error = "ICR2 lap targets must be positive"
@@ -147,7 +157,7 @@ func _physics_process(delta: float) -> void:
 		log_flush_elapsed += delta
 		if log_elapsed >= .1:
 			log_elapsed = 0
-			pending_log_rows.append("%f,%d,%d,%f,%f,%f,%f,%f,%f,%f,%s,%s,%f,%f,%s,%d,%d,%f,%d,%f,%f,%f" % [elapsed,mode,index,position.x,position.y,position.z,car.speed_mps*3.6,profile_speed*3.6,requested_speed*3.6,current_line_error,traffic_reason,racecraft.state,racecraft.lane,racecraft.target_lane,str(racecraft.opponent.name) if is_instance_valid(racecraft.opponent) else "",racecraft.passes,int(car.is_on_floor()),car.velocity.y,car.get_slide_collision_count(),car.get_floor_normal().x,car.get_floor_normal().y,car.get_floor_normal().z])
+			pending_log_rows.append("%f,%d,%d,%f,%f,%f,%f,%f,%f,%f,%s,%s,%f,%f,%s,%d,%d,%f,%d,%f,%f,%f" % [elapsed,mode,index,position.x,position.y,position.z,car.speed_mps*3.6,profile_speed*3.6,requested_speed*3.6,current_line_error,traffic_reason,racecraft.state,racecraft.lane,racecraft.target_lane,racecraft.traffic_target_name(),racecraft.passes,int(car.is_on_floor()),car.velocity.y,car.get_slide_collision_count(),car.get_floor_normal().x,car.get_floor_normal().y,car.get_floor_normal().z])
 		if log_flush_elapsed >= 1:
 			_flush_diagnostic()
 			log_flush_elapsed = 0
@@ -179,27 +189,71 @@ func _update_driving_plan(position: Vector3, delta: float, physics_tick: int = -
 	driving_plan_mode = int(mode)
 	driving_plan_ghost = car_ghost
 
+func _street_lane_point(at: int, side_bounds: Vector3 = Vector3(INF,INF,INF)) -> Vector3:
+	var point := race[at]
+	var choice: float = racecraft.lane
+	if absf(choice) > .0001:
+		point = point.lerp(racecraft.inside[at] if choice < 0 else racecraft.outside[at],absf(choice))
+	if racecraft.launch_weight > 0.0:
+		var half: float = racecraft.lateral_half_width(racecraft.inner[at],racecraft.outer[at])
+		var formation: Vector3 = racecraft.inner[at].lerp(racecraft.outer[at],clampf((racecraft.launch_lateral_m+half)/(2.0*half),0,1))
+		point = point.lerp(formation,racecraft.launch_weight)
+	# Alongside protection can displace RACE as much as a passing lane. Use
+	# that same protected path for progress and steering, including in a pack.
+	if side_bounds.x == INF:
+		side_bounds = racecraft._side_room_bounds(self)
+	# This is an exact vertex: avoid two path binary searches per candidate.
+	return racecraft.clamp_corridor_point(point,racecraft.inner[at],racecraft.outer[at],side_bounds)
+
+func _update_index(position: Vector3) -> void:
+	if not racecraft.enabled or not racecraft.physical_corridor_width or mode != Mode.RACING:
+		super._update_index(position)
+		return
+	# A tight bend's outside line can be several metres from RACE along the
+	# direction of travel too. Track progress on the selected path, otherwise
+	# projection onto RACE can aim behind a car correctly holding a passing lane.
+	var best := INF
+	var nearest := index
+	var side_bounds: Vector3 = racecraft._side_room_bounds(self)
+	for step in range(-2,35):
+		var candidate := posmod(index+step,race.size())
+		var error := position.distance_squared_to(_street_lane_point(candidate,side_bounds))
+		if error < best:
+			best = error
+			nearest = candidate
+	if index > race.size()-35 and nearest < 35:
+		laps += 1
+	index = nearest
+
 func _sample_steering_curvature(position: Vector3) -> float:
 	if mode == Mode.FORMATION:
-		var formation_target: Vector3 = car.track.to_global(_formation_ahead(clampf(4.0+car.speed_mps*.22,5,22)))
+		var formation_target: Vector3 = car.track.to_global(_formation_ahead(_steering_lookahead()))
 		var formation_offset: Vector3 = car.global_basis.inverse()*(formation_target-car.global_position)
 		formation_offset.y = 0
 		return -2.0*formation_offset.x/maxf(formation_offset.length_squared(),1)
 	var points := race if mode == Mode.RACING else route
 	var closest := Geometry3D.get_closest_point_to_segment(position,points[index],points[(index+1)%points.size()])
 	var origin_offset := closest.distance_to(points[index])
+	if mode == Mode.RACING and racecraft.enabled and racecraft.physical_corridor_width:
+		var a := _street_lane_point(index)
+		var b := _street_lane_point((index+1)%race.size())
+		var fraction := clampf((position-a).dot(b-a)/maxf(a.distance_squared_to(b),.001),0,1)
+		origin_offset = fraction*race[index].distance_to(race[(index+1)%race.size()])
 	# race.lp supplies the common longitudinal speed coordinate, but its PASS1/
 	# PASS2 alternatives are intentionally laterally displaced.  Measure the
 	# existing off-line safety correction from the selected blended path instead
 	# of treating a correctly held passing line as a tracking failure.
 	var intended_point: Vector3 = racecraft.ahead(self,origin_offset) if mode == Mode.RACING else closest
 	current_line_error = Vector2(position.x-intended_point.x,position.z-intended_point.z).length()
-	var lookahead := clampf(4.0+car.speed_mps*.22,5,22)
+	var lookahead := _steering_lookahead()
 	var target_point: Vector3 = racecraft.ahead(self,origin_offset+lookahead) if mode == Mode.RACING else _ahead(origin_offset+lookahead)
 	var target: Vector3 = car.track.to_global(target_point)
 	var offset: Vector3 = car.global_basis.inverse()*(target-car.global_position)
 	offset.y = 0
 	return -2.0*offset.x/maxf(offset.length_squared(),1)
+
+func _steering_lookahead() -> float:
+	return clampf(steering_lookahead_base_m+car.speed_mps*steering_lookahead_time_s,minf(5.0,steering_lookahead_base_m+1.0),steering_lookahead_max_m)
 
 func _planned_speed() -> float:
 	if mode == Mode.PIT_EXIT:

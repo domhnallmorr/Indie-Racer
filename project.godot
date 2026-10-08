@@ -22,6 +22,7 @@ config/features=PackedStringArray("4.7", "GL Compatibility")
 
 ContentCatalog="*res://game/content/content_catalog.gd"
 WindowControls="*res://game/main/window_controls.gd"
+DrivingOptions="*res://game/vehicle/driving_options.gd"
 
 [display]
 

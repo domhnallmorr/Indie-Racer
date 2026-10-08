@@ -11,6 +11,7 @@ var origins: Dictionary = {}
 var samples: Array[float] = []
 var player: Node
 var menu_mode := false
+var steering_from_wheel := false
 var close_callback: Callable
 
 func _ready() -> void:
@@ -164,11 +165,14 @@ func axis_value(control: String) -> float:
 	return normalize_axis(Input.get_joy_axis(device, binding.axis), binding.positions, control == "steer")
 
 func controls() -> Vector3:
+	steering_from_wheel = false
 	if panel.is_visible_in_tree():
 		return Vector3(0, 1, 0)
 	var keyboard := Vector3(Input.get_action_strength("drive_accelerate"), Input.get_action_strength("drive_brake"), Input.get_axis("drive_right", "drive_left"))
 	if not enabled.button_pressed:
 		return keyboard
+	var steer_binding: Dictionary = bindings.get("steer",{})
+	steering_from_wheel = is_zero_approx(keyboard.z) and steer_binding.has("positions") and _device(steer_binding) >= 0
 	# Missing devices release their inputs; keyboard remains usable.
 	return Vector3(maxf(keyboard.x, axis_value("throttle")), maxf(keyboard.y, axis_value("brake")), keyboard.z if absf(keyboard.z) > 0 else axis_value("steer"))
 

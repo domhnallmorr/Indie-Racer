@@ -2,6 +2,25 @@
 
 Connect the wheel and pedals before starting Godot. Press **F10** in practice to open the Controls screen, which contains keyboard/camera help and wheel setup. Detected device names appear at the bottom. This uses Godot's joystick input; the device must appear there before calibration can work.
 
+**Player Handling** is available in the main menu's Options and the in-session
+F10 Controls screen. Choose **Experimental handling** to drive the wheel-contact
+geometry prototype, or **Current handling** to restore the existing model. The
+selection applies immediately and is saved for future sessions in
+`user://driving_options.cfg`; it survives resetting to the pits. The initial
+default is Current handling. AI physics and car setup values are unaffected.
+
+**Experimental: free front wheels** retains the same contact geometry but gives
+each front wheel its own rotational speed, half the front axle inertia and half
+the front brake torque. ABS acts separately on each front wheel. Rear axle spin
+remains shared. The previous **Experimental handling** option is retained for
+comparison. Telemetry labels the new variant `wheel_contacts_free_front_v2`.
+
+The original experiment uses separate wheel contact velocities and their full turning
+moments, retaining shared axle spin states. It is not a complete four-wheel or
+differential simulation. It can change cornering balance and late power-slide
+recovery. F11 telemetry identifies the selected `handling_model` in every row,
+including switches during a recording, so comparisons can be analysed accurately.
+
 For the Logitech G29 (and other detected wheels):
 
 1. Click **Calibrate steer**, turn the wheel to the desired full-left driving range, and click **Capture**. Centre the wheel and capture again; turn fully right and capture again. Use matching left/right rotation ranges.
@@ -12,6 +31,8 @@ For the Logitech G29 (and other detected wheels):
 
 WASD remains available. Opening any race UI screen suspends player driving; the practice clock and AI continue. Disconnecting a device releases its assigned controls. Calibration is saved in `user://wheel_controls.cfg` and restored using device GUID and name, rather than the temporary device number. Two identical USB devices with identical names/GUIDs cannot currently be distinguished.
 
-Existing steering smoothing, speed-sensitive steering range and stability assists remain active. This first version adds analog inputs and paddles; force feedback and clutch input are not implemented. Steering calibration maps your chosen physical wheel range to the existing speed-sensitive steering range, rather than a fixed steering ratio.
+F10 **Speed steering help** controls steering range. At the default 100%, your calibrated full turn gives 28 degrees of road-wheel angle at rest, reducing smoothly to 4.5 degrees at 270 km/h and above. At 0%, the calibrated range maps to a fixed 28 degrees at every speed; this is much more sensitive at racing speeds. Master strength scales this option. Changes apply for the session.
+
+Wings, tyre grip, banking and yaw do not change the steering mapping. A connected, calibrated steering axis now commands the road-wheel angle directly each tick, including countersteering. It bypasses the keyboard's steering rate limit. Keyboard override, disabled wheel controls and disconnected/missing steering bindings retain the digital rate limit; opening setup clears direct steering. Existing calibration is retained. Stability and traction control default to off; ABS remains on. Force feedback and clutch input are not implemented.
 
 If no devices appear, check that Windows detects the wheel, then restart the game. Hardware compatibility and actual driving feel still need verification with the connected wheel.

@@ -53,6 +53,8 @@ func _ready() -> void:
 	roster_seed = selection.get("seed",roster_seed)
 	ai_telemetry_enabled = selection.get("ai_telemetry",ai_telemetry_enabled)
 	session_mode = str(selection.get("session_mode","practice"))
+	if session_mode == "private_testing":
+		ai_enabled = false
 	session.incident_mode = str(selection.get("incident_mode","everyone"))
 	if session.incident_mode not in ["off","ai_only","everyone"]:
 		session.incident_mode = "everyone"
@@ -97,6 +99,7 @@ func _ready() -> void:
 	player_state.configure_tyre_wear(active_seed ^ int("player".hash()))
 	player.load_aero_setup(track_session_file)
 	player.load_gearing_setup(track_session_file)
+	player.load_roll_setup(track_session_file)
 	_configure_track_fuel(player_state)
 	_update_pit_state()
 	_add_limiter_end_marker()
@@ -109,6 +112,8 @@ func _ready() -> void:
 		session.start_race(track_data.race_laps)
 	elif session_mode == "qualifying":
 		session.start_qualifying()
+	elif session_mode == "private_testing":
+		session.start_private_testing()
 	else:
 		session.start_practice()
 	if ai_enabled:
@@ -131,10 +136,11 @@ func _ready() -> void:
 		for car in [player]+ai_cars:
 			if _car_id(car) == grid_ids[0]:
 				formation_leader = car
-	pace_car = preload("res://game/race/pace_car.gd").new()
-	pace_car.name = "PaceCar"
-	add_child(pace_car)
-	pace_car.configure($MileOval,track_data,formation_leader,session_mode == "race")
+	if session_mode != "private_testing":
+		pace_car = preload("res://game/race/pace_car.gd").new()
+		pace_car.name = "PaceCar"
+		add_child(pace_car)
+		pace_car.configure($MileOval,track_data,formation_leader,session_mode == "race")
 	race_control = preload("res://game/race/race_control.gd").new()
 	race_control.name = "RaceControl"
 	add_child(race_control)
@@ -267,7 +273,7 @@ func _update_hud() -> void:
 		status_text = "SESSION COMPLETE" if session.status == session.Status.FINISHED else session.clock_text() + " remaining"
 	var location := "PIT LANE" if player_state.is_in_pit_lane else "OUTSIDE PIT LANE"
 	var limiter := "80 km/h LIMITER ON" if player_state.is_in_pit_speed_zone else "LIMITER OFF"
-	var session_name := session_mode.to_upper()
+	var session_name: String = session.display_name().to_upper()
 	$HUD/Panel/Label.text = "%s  •  %s\n%s  •  %s" % [session_name,status_text,location,limiter]
 	$HUD/Panel/Label.modulate = Color("ffcf42") if race_control != null and race_control.active() else Color.WHITE
 	if not player_state.incident_name.is_empty():
@@ -294,7 +300,7 @@ func _update_hud() -> void:
 		elif followed_driver.race_plan.retired:
 			driver_status = "OUT — "+followed_driver.race_plan.failure_name().to_upper()
 		$HUD/Panel/Label.text += "\nFOLLOWING  %s  •  %s" % [ai_cars[followed].get_meta("driver_name",str(ai_cars[followed].name)),driver_status]
-	$HUD/Panel/Label.text += "\nF12 MENU  •  9 TIMING  •  F1–F4 INFO"
+	$HUD/Panel/Label.text += "\nF12 MENU  •  9 TIMING  •  F1–F5 INFO"
 
 func _load_roster() -> bool:
 	if not roster.load_roster(roster_file):
@@ -335,6 +341,13 @@ func _spawn_ai() -> void:
 	var corridor_path := track_session_file.get_base_dir()+"/ai/racing_corridor.json"
 	if FileAccess.file_exists(corridor_path):
 		data["racing_corridor"] = JSON.parse_string(FileAccess.get_file_as_string(corridor_path))
+	var corners_path := track_session_file.get_base_dir()+"/ai/corner_regions.json"
+	if FileAccess.file_exists(corners_path):
+		var corners = JSON.parse_string(FileAccess.get_file_as_string(corners_path))
+		if corners is Dictionary:
+			data["corner_regions"] = corners
+		else:
+			push_warning("Invalid corner regions: "+corners_path+"; using curvature fallback")
 	var racecraft_path := track_session_file.get_base_dir()+"/ai/racecraft.json"
 	if FileAccess.file_exists(racecraft_path):
 		var racecraft_data = JSON.parse_string(FileAccess.get_file_as_string(racecraft_path))

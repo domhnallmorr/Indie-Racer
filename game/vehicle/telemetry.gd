@@ -23,9 +23,21 @@ func start(player: Node, directory: String = "user://telemetry") -> Error:
 	header += ",final_drive,gear_ratio_1,gear_ratio_2,gear_ratio_3,gear_ratio_4,gear_ratio_5,gear_ratio_6"
 	header += ",slipstream_target,slipstream_strength,slipstream_drag_reduction"
 	header += ",dirty_air_target,dirty_air_strength"
+	header += ",assistance_strength,steering_assistance,stability_assistance,traction_control,anti_lock_brakes"
+	header += ",longitudinal_accel_mps2,load_transfer_accel_mps2,load_transfer_n"
+	header += ",assisted_steering_lock_deg"
+	for corner in ["fl","fr","rl","rr"]:
+		header += ","+corner+"_load_n,"+corner+"_peak_n,"+corner+"_usage,"+corner+"_demand"
+	header += ",front_roll_stiffness_fraction,lateral_contact_accel_mps2,front_lateral_transfer_n,rear_lateral_transfer_n"
+	header += ",automatic_gears,direct_wheel_steering,clutch_engagement,clutch_torque_min_nm,clutch_torque_max_nm,engine_opening,integration_steps"
+	header += ",handling_model"
+	header += ",front_left_omega_rad_s,front_right_omega_rad_s"
 	file.store_csv_line(PackedStringArray(header.split(",")))
 	var metadata := ConfigFile.new()
 	metadata.set_value("run", "physics", player.parameters.values)
+	metadata.set_value("run", "handling_model", player.sim.handling_model_id())
+	metadata.set_value("run", "integration", {"scheme":player.sim.INTEGRATION_SCHEME,
+		"max_step_s":player.sim.MAX_INTEGRATION_STEP_S})
 	metadata.set_value("run", "aero_track_key", player.aero_setup_key)
 	metadata.set_value("run", "wind_world_mps", player.wind_world_mps)
 	metadata.set_value("run", "wheel_bindings", player.wheel_input.bindings)
@@ -58,6 +70,16 @@ func record(player: Node, delta: float, inputs: Vector3, normal: Vector3, gravit
 	values.append_array(sim.p.forward_ratios)
 	values.append_array([sim.slipstream_target,sim.slipstream_strength,sim.slipstream_drag_reduction])
 	values.append_array([sim.dirty_air_target,sim.dirty_air_strength])
+	values.append_array([sim.p.assistance_strength,sim.p.steering_assistance,sim.p.stability_assistance,sim.p.traction_control,sim.p.anti_lock_brakes])
+	values.append_array([sim.acceleration,sim.load_transfer_acceleration,sim.load_transfer_n])
+	values.append(sim.assisted_steering_lock_deg)
+	for i in range(4):
+		values.append_array([sim.wheel_loads[i],sim.wheel_peaks[i],sim.wheel_usage[i],sim.wheel_demand[i]])
+	values.append_array([sim.p.front_roll_stiffness_fraction,sim.lateral_contact_acceleration,sim.front_lateral_transfer_n,sim.rear_lateral_transfer_n])
+	values.append_array([int(sim.automatic),int(sim.direct_steering),sim.clutch,sim.clutch_torque_min_nm,sim.clutch_torque_max_nm,sim.engine_opening,sim.integration_steps])
+	values.append(sim.handling_model_id())
+	var free_front: bool = sim.experimental_wheel_motion and sim.independent_front_rotation
+	values.append_array([sim.front_left_omega if free_front else sim.front_omega,sim.front_right_omega if free_front else sim.front_omega])
 	var row := PackedStringArray()
 	for value in values:
 		row.append(str(value))

@@ -1,8 +1,24 @@
 # Asphalt surface
 
-Procedural shader texture on racing surface, apron and pit lane. Track-local X/Z mapping follows the existing banked mesh without UV seams. Fine aggregate fades at distance to limit shimmer. Deterministic position-hashed repair patches vary in size (roughly 1–8 m by 0.7–4.7 m), rotation, clipped corners, rough edges and darkness. No repeating patch image or per-frame randomness. Original mesh geometry, collision, track markings and handling are untouched.
+Procedural shader texture on racing surface, apron and pit lane. Track-local X/Z mapping follows the existing banked mesh without UV seams. Fine aggregate fades at distance to limit shimmer. Deterministic position-hashed repair patches vary in size (roughly 1–8 m by 0.7–4.7 m), rotation, clipped corners, rough edges and darkness. No repeating patch image or per-frame randomness. The shader preserves mesh geometry, track markings and handling.
 
 Shader parameters are in asphalt.gdshader. track_surface.gd applies material overrides to named surface and wall meshes. No image generation or downloaded assets used.
+
+## Road collision
+
+At runtime, `track_surface.gd` calls `road_collision.gd` once at scene load. The
+imported racing surface has 20 quads across each approximately 2 m strip. Level
+rectangular strips become two collision triangles, reducing the current collider
+from 32,200 to 16,658 triangles. The helper uses the existing collider's exact
+vertices, preserves winding and collision properties, and copies all banked and
+transition strips unchanged. It checks the rectangle's corners and covered area;
+an unexpected strip layout retains the original detail.
+
+The visual mesh, apron, pit lane and barriers retain their imported geometry.
+Movement, surface stepping and visual grounding continue at 60 Hz. This runs on
+the imported collider, so regenerating the GLB needs no separate collision asset
+or bake. `tools/validate_mile_road_collision.gd` compares road support before and
+after simplification.
 
 ## Corner rubber
 

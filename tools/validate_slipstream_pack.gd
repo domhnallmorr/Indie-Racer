@@ -1,6 +1,9 @@
 extends SceneTree
 ## Start a seeded field on track to isolate towing from pit-release scheduling.
 func _initialize() -> void:
+	for argument in OS.get_cmdline_user_args():
+		if argument.begins_with("--track="):
+			root.set_meta("roster_selection",{"track_id":argument.get_slice("=",1),"file":"res://content/rosters/irl_2001/manifest.json","seed":1234})
 	call_deferred("validate")
 
 func validate() -> void:
@@ -11,6 +14,7 @@ func validate() -> void:
 	root.add_child(main)
 	var fixture = load("res://tools/validate_racecraft.gd").new()
 	var without_tow := "--without-tow" in OS.get_cmdline_user_args()
+	var groups := ceilf(main.ai_cars.size()/3.0)
 	for i in range(main.ai_cars.size()):
 		var car = main.ai_cars[i]
 		var driver = car.get_node("Driver")
@@ -18,7 +22,7 @@ func validate() -> void:
 		driver.race_pit_cycle = false
 		car.slipstream_enabled = not without_tow
 		car.player_state.request_departure()
-		fixture.place(car,100.0+floorf(i/3.0)*driver.race_length_m/5.0+(i%3)*22.0,0.0,70.0)
+		fixture.place(car,100.0+floorf(i/3.0)*driver.race_length_m/groups+(i%3)*22.0,0.0,70.0)
 	var tow_ticks := 0
 	var contacts := 0
 	var edge_ticks := 0
