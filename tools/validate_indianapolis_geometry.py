@@ -1,6 +1,9 @@
 """Verify authored Indianapolis dimensions, seams, AI clearance and smooth banking."""
 import json
 import math
+import bisect
+import csv
+import hashlib
 from pathlib import Path
 
 PACKAGE = Path(__file__).resolve().parents[1]/'content/tracks/indianapolis'
@@ -17,10 +20,31 @@ banks = [math.degrees(math.atan2(r[0][1]-r[-1][1],horizontal(r[0],r[-1]))) for r
 assert road[0] == road[-1] and apron[0] == apron[-1] and race[0] == race[-1]
 for measured, expected in [(min(widths),50*.3048),(max(widths),60*.3048),
                            (min(aprons),12*.3048),(max(aprons),12*.3048),
-                           (min(banks),0),(max(banks),9.2),(banks[0],0)]:
+                           (max(banks),9.266607240759202),(banks[0],0)]:
     assert abs(measured-expected) < .001, (measured,expected)
 max_gradient = max(abs(b-a)/(4023.36/(len(road)-1)) for a,b in zip(banks,banks[1:]))
-assert max_gradient < .079, max_gradient
+assert max_gradient < .15, max_gradient
+# Compare every built cross-section directly with the supplied CSV, independently
+# of the generator's interpolation helper. Preserve signed negative entry camber.
+with (PACKAGE/'banking_profile.csv').open(newline='') as handle:
+    profile = list(csv.DictReader(handle))
+profile_s = [float(row['distance_ft']) for row in profile]
+profile_bank = [float(row['banking_degrees']) for row in profile]
+profile_s = [s/profile_s[-1]*4023.36 for s in profile_s]
+def expected_bank(s):
+    j = max(0,min(bisect.bisect_right(profile_s,s)-1,len(profile_s)-2))
+    f = (s-profile_s[j])/(profile_s[j+1]-profile_s[j])
+    return profile_bank[j]+f*(profile_bank[j+1]-profile_bank[j])
+errors = [abs(b-expected_bank(i*4023.36/(len(road)-1))) for i,b in enumerate(banks)]
+assert max(errors) < .0001, max(errors)
+assert min(banks) < -.15, 'Negative entry camber was lost'
+reference = read('ai/reference_paths.json')
+assert read('source.json')['banking_profile']['sha256'] == hashlib.sha256((PACKAGE/'banking_profile.csv').read_bytes()).hexdigest()
+for first,second in [(0,1),(2,3)]:
+    midpoint = (reference['bank_turn_sections'][first][1]+reference['bank_turn_sections'][second][0])/2
+    assert abs(expected_bank(midpoint)-4.21418) < .001, 'Short chute is not banked'
+for i,(r,p) in enumerate(zip(road,reference['reference_path'])):
+    assert abs(p[1]-horizontal(p,r[-1])*math.tan(math.radians(banks[i]))) < .001
 for i,(r,p) in enumerate(zip(road,race)):
     assert horizontal(p,r[0]) >= 1.699 and horizontal(p,r[-1]) >= 1.699
     assert abs(p[1]-(horizontal(p,r[-1])*math.tan(math.radians(banks[i])))) < .001
@@ -30,6 +54,11 @@ for i,(r,p) in enumerate(zip(road,race)):
     assert math.dist(corridor['inside'][i],corridor['outside'][i]) >= 5
     assert math.dist(corridor['inner'][i],corridor['outer'][i]) >= 10
 assert read('ai/race.lp.json')['reference_points'] == race
+corners = read('ai/corner_regions.json')
+assert corners['reference_point_count'] == len(race)-1
+for region in corners['regions']:
+    for marker in ('entry','exit'):
+        assert region[marker+'_point'] == race[region[marker+'_index']], 'Stale corner region height'
 assert len(read('ai/race.lp.json')['speed_mps']) == len(race)-1
 pit_road = next(s['rows'] for s in strips if s['name']=='PitRoad')
 divider = next(s['rows'] for s in strips if s['name']=='PitDividerBase')
@@ -57,4 +86,4 @@ assert abs(horizontal(finish,brick_center)-10.75) < .001, 'Bricks misaligned wit
 pagoda = read('geometry.json')['pagoda']['position']
 assert abs(horizontal(pagoda,finish)-(51+15.24/2)) < .001
 print('Indianapolis landmarks PASS: yard-wide brick strip across track and pits; Pagoda aligned with finish')
-print('Indianapolis geometry PASS: exact widths/aprons, 0/9.2 degree banks, closed seams, AI edge clearance; max bank gradient',round(max_gradient,5),'deg/m')
+print('Indianapolis geometry PASS: exact widths/aprons, CSV banking at every row, banked short chutes, signed entry camber, closed seams, AI edge clearance; max bank error',max(errors),'deg; max bank gradient',round(max_gradient,5),'deg/m')

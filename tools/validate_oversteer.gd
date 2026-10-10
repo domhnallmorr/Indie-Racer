@@ -34,7 +34,7 @@ func _initialize() -> void:
 	var tyre = Model.new()
 	tyre.configure(p.duplicate(true))
 	var load_n: float = p.reference_load_n
-	var peak: float = load_n*p.friction_coefficient
+	var peak: float = tyre._peak_force(load_n,1)
 	var stiffness: float = p.rear_cornering_stiffness_n_rad
 	var peak_angle: float = (PI/2.0)*peak/stiffness
 	check(is_equal_approx(tyre._tyre(load_n,0,.00001,stiffness,1).y/-.00001,stiffness),"Small-slip cornering stiffness preserved")

@@ -22,7 +22,6 @@ config/features=PackedStringArray("4.7", "GL Compatibility")
 
 ContentCatalog="*res://game/content/content_catalog.gd"
 WindowControls="*res://game/main/window_controls.gd"
-DrivingOptions="*res://game/vehicle/driving_options.gd"
 
 [display]
 
@@ -31,6 +30,10 @@ window/size/viewport_height=720
 window/size/mode=3
 window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"
+
+[physics]
+
+common/physics_ticks_per_second=120
 
 [rendering]
 

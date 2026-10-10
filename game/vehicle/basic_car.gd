@@ -147,9 +147,11 @@ func _move_with_car_contacts(delta: float) -> bool:
 	var incoming := velocity
 	car_contact_this_step = false
 	wall_impact_this_step = {}
-	_try_surface_step(Vector3(velocity.x,0,velocity.z)*delta)
+	if not _suspension_owns_support():
+		_try_surface_step(Vector3(velocity.x,0,velocity.z)*delta)
 	move_and_slide()
-	apply_floor_snap()
+	if not _suspension_owns_support():
+		apply_floor_snap()
 	var resolved := incoming
 	var static_normals: Array[Vector3] = []
 	var static_hits: Array[Dictionary] = []
@@ -239,6 +241,9 @@ func _is_drivable_mesh_edge(collider: Object, at: Vector3) -> bool:
 
 func _contact_mass_kg() -> float:
 	return 750.0 # Starter car fallback; configured cars override this.
+
+func _suspension_owns_support() -> bool:
+	return false
 
 func _reset_wall_contacts() -> void:
 	last_wall_impact = {}

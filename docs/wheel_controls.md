@@ -2,24 +2,15 @@
 
 Connect the wheel and pedals before starting Godot. Press **F10** in practice to open the Controls screen, which contains keyboard/camera help and wheel setup. Detected device names appear at the bottom. This uses Godot's joystick input; the device must appear there before calibration can work.
 
-**Player Handling** is available in the main menu's Options and the in-session
-F10 Controls screen. Choose **Experimental handling** to drive the wheel-contact
-geometry prototype, or **Current handling** to restore the existing model. The
-selection applies immediately and is saved for future sessions in
-`user://driving_options.cfg`; it survives resetting to the pits. The initial
-default is Current handling. AI physics and car setup values are unaffected.
+The rear differential model is now the only player handling model. It resolves
+all four wheel contact velocities and rotational speeds. Older handling choices
+and saved `driving_options.cfg` selections are no longer used.
 
-**Experimental: free front wheels** retains the same contact geometry but gives
-each front wheel its own rotational speed, half the front axle inertia and half
-the front brake torque. ABS acts separately on each front wheel. Rear axle spin
-remains shared. The previous **Experimental handling** option is retained for
-comparison. Telemetry labels the new variant `wheel_contacts_free_front_v2`.
-
-The original experiment uses separate wheel contact velocities and their full turning
-moments, retaining shared axle spin states. It is not a complete four-wheel or
-differential simulation. It can change cornering balance and late power-slide
-recovery. F11 telemetry identifies the selected `handling_model` in every row,
-including switches during a recording, so comparisons can be analysed accurately.
+The in-session F10 screen provides **Rear Differential** settings: **Drive locking**,
+**Coast locking** and **Preload**, starting at 30% / 10% / 20 Nm. Changes apply
+immediately and survive pit resets; each new session restores these defaults.
+See [differential controls](rear_differential.md). F11 telemetry identifies the
+model as `wheel_contacts_rear_differential_v1`.
 
 For the Logitech G29 (and other detected wheels):
 

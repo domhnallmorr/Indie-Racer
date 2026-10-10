@@ -26,16 +26,23 @@ func _initialize() -> void:
 		if absf(accel) == 10:
 			var moment: float = sim.front_lateral_transfer_n*sim.p.front_track_m+sim.rear_lateral_transfer_n*sim.p.rear_track_m
 			check(is_equal_approx(moment,sim.vehicle_mass_kg*accel*sim.p.cg_height_m),"Roll moment conserved before wheel lift")
-	# Split tyres preserve the old axle curve under equal load when load
-	# sensitivity is disabled. This catches accidental stiffness/force doubling.
+	# Equal loads preserve the axle reference and catch accidental force doubling.
 	sim.lateral_contact_acceleration = 0
 	sim._update_wheel_loads()
-	sim.p.load_grip_exponent = 1.0
 	for slip in [0.0,.05,.4]:
 		for angle in [.001,.08,.4]:
 			var split: Vector2 = sim._wheel_force(0,slip,angle,90000,1)+sim._wheel_force(1,slip,angle,90000,1)
 			check(split.is_equal_approx(sim._tyre(sim.front_load,slip,angle,90000,1)),"Equal-load split preserves axle force")
-	sim.p.load_grip_exponent = config.values.load_grip_exponent
+	# Reference values come from the independent executable/telemetry comparison.
+	# Smooth gameplay arithmetic may differ slightly from ICR2 integer rounding.
+	for row in [Vector3(2688,4334,0),Vector3(7637,9374,1),Vector3(4226,6500,2),Vector3(9330,10676,3)]:
+		var peak: float = .5*sim._peak_force(2*row.x,1,int(row.z))
+		check(absf(peak-row.y) < 8,"Indy capacity matches the plotted proposal for wheel "+str(row.z))
+	check(sim._peak_force(15000,1,0) < sim._peak_force(15000,1,2),"Front pair uses stronger load sensitivity")
+	for index in range(4):
+		for load_n in [.00001,100.0,12000.0,50000.0]:
+			var peak: float = .5*sim._peak_force(2*load_n,1,index)
+			check(is_finite(peak) and peak >= 0,"Load curve remains finite through wheel lift and extreme loads")
 	var ref_load: float = sim.p.reference_load_n
 	check(sim._peak_force(2*ref_load,1) < 2*sim._peak_force(ref_load,1),"Double load gives less than double peak grip")
 	check(sim._peak_force(.5*ref_load,1)+sim._peak_force(1.5*ref_load,1) < 2*sim._peak_force(ref_load,1),"Unequal loading reduces combined peak grip")

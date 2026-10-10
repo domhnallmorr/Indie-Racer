@@ -56,16 +56,20 @@ func capture() -> void:
 		await RenderingServer.frame_post_draw
 		root.get_texture().get_image().save_png("res://tmp/surfers_t1_broadcast.png")
 		main.player.global_transform = saved_pose
-	if not geometry.get("backstraight_chicane",{}).is_empty():
-		var detail: Dictionary = geometry.backstraight_chicane
+	var original_fov := camera.fov
+	for detail_name in ["backstraight_chicane","final_turn","landmark_view","landmark_aerial","main_straight_view","finish_stand_view","second_chicane"]:
+		if geometry.get(detail_name,{}).is_empty(): continue
+		var detail: Dictionary = geometry[detail_name]
 		var track: Node3D = main.get_node("MileOval")
+		camera.fov = detail.get("fov",original_fov)
 		camera.set_process(false)
 		camera.set_physics_process(false)
 		camera.global_position = track.to_global(Vector3(detail.camera_position[0],detail.camera_position[1],detail.camera_position[2]))
 		camera.look_at(track.to_global(Vector3(detail.camera_target[0],detail.camera_target[1],detail.camera_target[2])))
 		await process_frame
 		await RenderingServer.frame_post_draw
-		root.get_texture().get_image().save_png("res://tmp/surfers_backstraight.png")
+		root.get_texture().get_image().save_png("res://tmp/surfers_"+("backstraight" if detail_name=="backstraight_chicane" else detail_name)+".png")
+	camera.fov = original_fov
 	camera.target = main.get_node("MileOval").pit_focus
 	camera.distance = 130
 	camera.yaw = 2.4

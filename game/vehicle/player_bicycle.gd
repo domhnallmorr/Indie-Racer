@@ -17,6 +17,16 @@ var telemetry = preload("res://game/vehicle/telemetry.gd").new()
 var aero_setup_key := ""
 var gearing_setup_key := ""
 var roll_setup_key := ""
+var suspension_visual: Node3D
+var suspension_normal := Vector3.UP
+var suspension_road_points := PackedVector3Array([Vector3.ZERO,Vector3.ZERO,Vector3.ZERO,Vector3.ZERO])
+var previous_suspension_points := PackedVector3Array()
+var previous_suspension_present := PackedByteArray()
+var previous_suspension_road_basis := Basis.IDENTITY
+var suspension_collision_rest := Transform3D.IDENTITY
+var suspension_collision_cached := false
+var suspension_wheels: Array[Node3D] = []
+var suspension_wheel_origins := PackedVector3Array()
 @export var wind_world_mps := Vector3.ZERO
 
 static func valid_roll_balance(value: Variant) -> bool:
@@ -30,6 +40,200 @@ func load_roll_setup(track_key: String) -> void:
 	var value = saved.get_value(track_key,"front_roll_stiffness_fraction",sim.p.front_roll_stiffness_fraction)
 	if valid_roll_balance(value):
 		sim.p.front_roll_stiffness_fraction = float(value)
+
+func load_suspension_setup(track_key: String) -> void:
+	sim.suspension.enabled = false
+	sim.suspension.profile_id = "disabled"
+	sim.suspension.reset()
+	if human_controlled and track_key.get_base_dir().get_file() == "indianapolis":
+		if not sim.suspension.configure_indy("res://content/vehicles/open_wheel/physics/indy_suspension.cfg"):
+			push_error("Could not load Indianapolis suspension prototype")
+			return
+		var saved := ConfigFile.new()
+		if saved.load("user://mechanical_setups.cfg") == OK:
+			var active = saved.get_value(track_key,"dynamic_roll_pitch",true)
+			if active is bool:
+				sim.suspension.enabled = active
+			var travel = saved.get_value(track_key,"wheel_travel",true)
+			if travel is bool:
+				sim.suspension.wheel_travel_enabled = travel
+		# Keep grounded wheels in the road-aligned Visual frame. Only chassis
+		# meshes and the cockpit receive the reduced body-mode rotation.
+		if suspension_visual == null:
+			suspension_visual = Node3D.new()
+			suspension_visual.name = "SuspensionBody"
+			$Visual.add_child(suspension_visual)
+			for child in $Visual.get_children():
+				if child != suspension_visual and child is Node3D and not child.name.begins_with("Wheel"):
+					child.reparent(suspension_visual)
+			for wheel_name in ["WheelFrontLeft","WheelFrontRight","WheelRearLeft","WheelRearRight"]:
+				var wheel: Node3D = $Visual.find_child(wheel_name,true,false)
+				suspension_wheels.append(wheel)
+				suspension_wheel_origins.append(wheel.position)
+	_update_support_mode()
+
+func _suspension_owns_support() -> bool:
+	return physics_ready and sim.suspension.enabled and sim.suspension.wheel_travel_enabled
+
+func _update_support_mode() -> void:
+	floor_snap_length = 0.0 if _suspension_owns_support() else .8
+	previous_suspension_points.clear()
+	previous_suspension_present.clear()
+	previous_suspension_road_basis = _suspension_world_road_basis(suspension_normal)
+	_update_suspension_collision()
+
+func _update_suspension_collision() -> void:
+	var collider: CollisionShape3D = $CollisionShape3D
+	if not suspension_collision_cached:
+		suspension_collision_rest = collider.transform
+		suspension_collision_cached = true
+	if _suspension_owns_support():
+		# Keep the collision backstop parallel to the road. An upright box's
+		# uphill edge otherwise lifts the body above the wheels on banking.
+		# Its base remains at the body origin, preserving normal clearance;
+		# the visual tyre-plane offset must not be applied to this collider.
+		var local_normal := global_basis.inverse()*suspension_normal
+		var right := local_normal.cross(Vector3.BACK).normalized()
+		var road_basis := Basis(right,local_normal,right.cross(local_normal)).orthonormalized()
+		collider.transform = Transform3D(road_basis,Vector3.ZERO)*suspension_collision_rest
+	else:
+		collider.transform = suspension_collision_rest
+
+func _suspension_world_road_basis(normal: Vector3) -> Basis:
+	var forward := (-global_basis.z).slide(normal).normalized()
+	var right := forward.cross(normal).normalized()
+	return Basis(right,normal,-forward).orthonormalized()
+
+func _transport_suspension_body(from: Basis, to: Basis) -> void:
+	# Preserve body-up and angular velocity in world space when the road/yaw
+	# reference changes. Spinning the heading must not rotate bank tilt into
+	# a new suspension pitch deflection.
+	var pose := Basis(Vector3.RIGHT,sim.suspension.pitch)*Basis(Vector3.BACK,-sim.suspension.roll)
+	var up := to.inverse()*from*pose.y
+	var angular := to.inverse()*from*Vector3(sim.suspension.pitch_rate,0,-sim.suspension.roll_rate)
+	sim.suspension.roll = asin(clampf(up.x,-1,1))
+	sim.suspension.pitch = atan2(up.z,up.y)
+	sim.suspension.roll_rate = -angular.z
+	sim.suspension.pitch_rate = angular.x
+
+func _sample_suspension_road(delta: float) -> void:
+	var previous_world_normal := suspension_normal
+	var points := PackedVector3Array()
+	var normals := Vector3.ZERO
+	var present := PackedByteArray([0,0,0,0])
+	var contacts: PackedVector3Array = $Visual.get_meta("tyre_contacts")
+	# Metadata order is FL, RL, FR, RR; solver order is FL, FR, RL, RR.
+	var indices := [0,2,1,3]
+	var forward := (-global_basis.z).slide(suspension_normal).normalized()
+	var right := forward.cross(suspension_normal).normalized()
+	for i in range(4):
+		var local: Vector3 = contacts[indices[i]]
+		var at := global_position+right*local.x-forward*local.z
+		var query := PhysicsRayQueryParameters3D.create(at+Vector3.UP*.6,at-Vector3.UP*2.0,1)
+		query.exclude = [get_rid()]
+		var hit := get_world_3d().direct_space_state.intersect_ray(query)
+		var ok: bool = not hit.is_empty() and hit.normal.dot(Vector3.UP) >= cos(floor_max_angle) and not hit.collider is CharacterBody3D
+		present[i] = int(ok)
+		points.append(hit.position if ok else at-suspension_normal*sim.suspension.ride_height_m)
+		if ok: normals += hit.normal
+	if present.count(1) == 4:
+		# Fit contact heights, which are continuous across a bank/apron seam.
+		# Averaging facet normals instead jumps as each ray changes triangles.
+		var across := (points[1]+points[3]-points[0]-points[2])*.5
+		var rearward := (points[2]+points[3]-points[0]-points[1])*.5
+		var fitted := rearward.cross(across).normalized()
+		if fitted.dot(Vector3.UP) >= cos(floor_max_angle):
+			suspension_normal = fitted
+	elif not sim.suspension.initialized and normals.length_squared() > .01:
+		suspension_normal = normals.normalized()
+	elif not sim.suspension.initialized:
+		suspension_normal = Vector3.UP
+	sim.road_normal_acceleration = -velocity.slide(previous_world_normal).dot(suspension_normal-previous_world_normal)/delta if sim.suspension.initialized else 0.0
+	var road_basis := _suspension_world_road_basis(suspension_normal)
+	if sim.suspension.initialized:
+		var old_roll: float = sim.suspension.roll
+		var old_pitch: float = sim.suspension.pitch
+		_transport_suspension_body(previous_suspension_road_basis,road_basis)
+		sim.suspension.road_roll_rate = (sim.suspension.roll-old_roll)/delta
+		sim.suspension.road_pitch_rate = (sim.suspension.pitch-old_pitch)/delta
+	var gaps := PackedFloat64Array()
+	var speeds := PackedFloat64Array()
+	var mean_gap := 0.0
+	var count := 0
+	for i in range(4):
+		var gap := (global_position-points[i]).dot(suspension_normal)
+		gaps.append(gap)
+		# A newly acquired surface has no valid velocity history.
+		speeds.append((points[i]-previous_suspension_points[i]).dot(suspension_normal)/delta if previous_suspension_points.size() == 4 and previous_suspension_present[i] and present[i] else 0.0)
+		if present[i]:
+			mean_gap += gap
+			count += 1
+	if not sim.suspension.initialized:
+		# Lift only a freshly placed car already near its road. A reset in midair
+		# must fall normally instead of snapping down to a sampled surface.
+		if count > 0 and mean_gap/count < sim.suspension.ride_height_m+.10:
+			var lift: float = sim.suspension.ride_height_m-mean_gap/count
+			global_position.y += lift/maxf(suspension_normal.y,.65)
+			for i in range(4): gaps[i] += lift
+		sim.suspension.initialized = true
+	suspension_road_points = points
+	previous_suspension_points = points.duplicate()
+	previous_suspension_present = present.duplicate()
+	previous_suspension_road_basis = road_basis
+	sim.suspension.begin_frame(gaps,speeds,present)
+
+func save_suspension_enabled(active: bool, travel: bool = true) -> Error:
+	if not can_adjust_aero() or sim.suspension.profile_id == "disabled":
+		return ERR_UNAVAILABLE
+	var saved := ConfigFile.new()
+	var error := saved.load("user://mechanical_setups.cfg")
+	if error != OK and error != ERR_FILE_NOT_FOUND:
+		return error
+	saved.set_value(roll_setup_key,"dynamic_roll_pitch",active)
+	saved.set_value(roll_setup_key,"wheel_travel",travel)
+	error = saved.save("user://mechanical_setups.cfg")
+	if error == OK:
+		sim.suspension.enabled = active
+		sim.suspension.wheel_travel_enabled = travel
+		sim.reset()
+		_update_support_mode()
+	return error
+
+func _update_visual_grounding(delta: float) -> void:
+	if _suspension_owns_support():
+		var local_normal := global_basis.inverse()*suspension_normal
+		var right := local_normal.cross(Vector3.BACK).normalized()
+		$Visual.basis = Basis(right,local_normal,right.cross(local_normal)).orthonormalized()
+		$Visual.position = -local_normal*sim.suspension.ride_height_m
+	else:
+		super._update_visual_grounding(delta)
+	if suspension_visual == null:
+		return
+	var pose := Basis(Vector3.RIGHT,sim.suspension.pitch)*Basis(Vector3.BACK,-sim.suspension.roll)
+	var pivot := Vector3(0,sim.p.cg_height_m,0)
+	suspension_visual.transform = Transform3D(pose,pivot-pose*pivot)
+	for i in range(suspension_wheels.size()):
+		var origin: Vector3 = suspension_wheel_origins[i]
+		if _suspension_owns_support() and sim.suspension.sampled:
+			var mounted := suspension_visual.transform*origin
+			var road_y: float = $Visual.to_local(suspension_road_points[i]).y+origin.y
+			# Zero delivered force is not a command to snap to full droop.
+			# Follow any road within geometric reach even during damper unloading.
+			origin.y = maxf(road_y,mounted.y-sim.suspension.rebound_travel_m) if sim.suspension.road_present[i] else mounted.y-sim.suspension.rebound_travel_m
+		suspension_wheels[i].position = origin
+	if has_node("Cockpit"):
+		$Cockpit.transform = $Visual.transform*suspension_visual.transform*Transform3D(Basis.IDENTITY,$Visual.get_meta("cockpit_offset",Vector3.ZERO))
+
+func _reset_visual_grounding() -> void:
+	super._reset_visual_grounding()
+	if suspension_visual != null:
+		suspension_visual.transform = Transform3D.IDENTITY
+	for i in range(suspension_wheels.size()):
+		suspension_wheels[i].position = suspension_wheel_origins[i]
+	previous_suspension_points.clear()
+	previous_suspension_present.clear()
+	previous_suspension_road_basis = _suspension_world_road_basis(Vector3.UP)
+	suspension_normal = Vector3.UP
 
 func save_roll_setup(front_fraction: float) -> Error:
 	if not can_adjust_aero() or roll_setup_key.is_empty():
@@ -143,10 +347,6 @@ func _ready() -> void:
 		push_error("Player physics configuration failed: "+"; ".join(parameters.errors))
 		return
 	sim.configure(parameters.values)
-	if human_controlled:
-		sim.experimental_wheel_motion = DrivingOptions.experimental_handling
-		sim.independent_front_rotation = DrivingOptions.independent_front_rotation
-		DrivingOptions.handling_changed.connect(_set_experimental_handling)
 	add_to_group(Slipstream.GROUP)
 	max_surface_step_m = parameters.values.surface_step_m
 	floor_constant_speed = false
@@ -159,10 +359,6 @@ func _physics_process(delta: float) -> void:
 	if human_controlled and driving_enabled and physics_ready:
 		var inputs: Vector3 = wheel_input.controls()
 		drive_step(delta, inputs.x, inputs.y, inputs.z, wheel_input.steering_from_wheel)
-
-func _set_experimental_handling(enabled: bool) -> void:
-	sim.experimental_wheel_motion = enabled
-	sim.independent_front_rotation = DrivingOptions.independent_front_rotation
 
 func drive_step(delta: float, throttle_input: float, brake_input: float, steering: float, direct_wheel_steering := false) -> void:
 	if not physics_ready:
@@ -196,7 +392,9 @@ func drive_step(delta: float, throttle_input: float, brake_input: float, steerin
 	update_zone_state()
 	sim.slipstream_target = Slipstream.sample(self)
 	sim.dirty_air_target = Slipstream.sample(self,true) if human_controlled and dirty_air_enabled else 0.0
-	var normal := get_floor_normal() if is_on_floor() else Vector3.UP
+	if _suspension_owns_support():
+		_sample_suspension_road(delta)
+	var normal := suspension_normal if _suspension_owns_support() else (get_floor_normal() if is_on_floor() else Vector3.UP)
 	if normal.length_squared() < .5:
 		normal = Vector3.UP
 	var forward := (-global_basis.z).slide(normal).normalized()
@@ -207,21 +405,34 @@ func drive_step(delta: float, throttle_input: float, brake_input: float, steerin
 	sim.turn_normal_factors = Vector2(Vector3.UP.cross(forward).dot(normal),Vector3.UP.cross(left).dot(normal))
 	var gravity := Vector3.DOWN*9.81
 	var grip: float = _surface_grip()*player_state.tyre_grip_multiplier()
-	var grounded := is_on_floor()
-	var gravity_components := Vector3(gravity.dot(forward) if grounded else 0, gravity.dot(left) if grounded else 0, maxf(0,normal.dot(Vector3.UP))*9.81)
+	var grounded: bool = sim.suspension.has_support() if _suspension_owns_support() else is_on_floor()
+	# Normal + tangent gravity must still sum to world-down while airborne;
+	# keeping only the bank-normal component would make freefall drift uphill.
+	var plane_gravity: bool = grounded or _suspension_owns_support()
+	var gravity_components := Vector3(gravity.dot(forward) if plane_gravity else 0, gravity.dot(left) if plane_gravity else 0, maxf(0,normal.dot(Vector3.UP))*9.81)
 	var cap: float = track_data.speed_limit_kph/3.6 if player_state.is_in_pit_speed_zone else INF
-	sim.advance(delta,throttle_input,brake_input,steering,gravity.dot(forward) if is_on_floor() else 0,
-		gravity.dot(left) if is_on_floor() else 0,maxf(0,normal.dot(Vector3.UP))*9.81,is_on_floor(),grip,cap)
+	sim.advance(delta,throttle_input,brake_input,steering,gravity_components.x,
+		gravity_components.y,gravity_components.z,grounded,grip,cap)
+	var road_basis_before_yaw := _suspension_world_road_basis(normal)
 	rotate_y(sim.heading_change)
+	if _suspension_owns_support():
+		previous_suspension_road_basis = _suspension_world_road_basis(normal)
+		_transport_suspension_body(road_basis_before_yaw,previous_suspension_road_basis)
 	forward = (-global_basis.z).slide(normal).normalized()
 	left = normal.cross(forward).normalized()
+	_update_suspension_collision()
 	var vertical_fall := velocity.y-9.81*delta
 	velocity = forward*sim.u+left*sim.v
-	if not is_on_floor():
+	if _suspension_owns_support():
+		velocity += normal*(sim.suspension.heave_delta_m/maxf(delta,.0001))
+	elif not is_on_floor():
 		velocity.y = vertical_fall
 	var previous := global_position
 	var expected := Vector2(sim.u,sim.v).length()
 	var hit_static_wall := _move_with_car_contacts(delta)
+	if _suspension_owns_support() and is_on_floor() and sim.suspension.heave_velocity_mps < 0:
+		# Chassis bottoming is a collision backstop, not the regular wheel support.
+		sim.suspension.heave_velocity_mps = 0.0
 	var travelled := (global_position-previous)/maxf(delta,.0001)
 	if not hit_static_wall and not car_contact_this_step and get_slide_collision_count() > 0 and travelled.length() < expected*.5:
 		sim.u = travelled.dot(forward)
@@ -241,7 +452,7 @@ func drive_step(delta: float, throttle_input: float, brake_input: float, steerin
 
 func _receive_contact_velocity(new_velocity: Vector3) -> void:
 	velocity = new_velocity
-	var normal := get_floor_normal() if is_on_floor() else Vector3.UP
+	var normal := suspension_normal if _suspension_owns_support() else (get_floor_normal() if is_on_floor() else Vector3.UP)
 	var forward := (-global_basis.z).slide(normal).normalized()
 	var left := normal.cross(forward).normalized()
 	sim.u = new_velocity.dot(forward)
@@ -267,6 +478,7 @@ func reset_dynamics() -> void:
 	_reset_wall_contacts()
 	_reset_visual_grounding()
 	sim.reset()
+	_update_support_mode()
 	speed_mps = 0
 	velocity = Vector3.ZERO
 	contact_drift = Vector3.ZERO

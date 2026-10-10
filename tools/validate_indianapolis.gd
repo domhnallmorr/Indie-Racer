@@ -14,7 +14,7 @@ func validate() -> void:
 	await physics_frame
 	var circuit: Node3D = main.get_node("MileOval")
 	var reference: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://content/tracks/indianapolis/ai/reference_paths.json"))
-	for sample in [[0,0.0],[250,9.2],[400,0.0],[552,9.2],[1000,0.0],[1256,9.2],[1405,0.0],[1558,9.2]]:
+	for sample in [[0,0.0],[250,9.2666],[400,4.2142],[552,9.2666],[1000,0.0],[1256,9.2666],[1405,4.2142],[1558,9.2666]]:
 		var p: Array = reference.reference_path[sample[0]]
 		var at := circuit.to_global(Vector3(p[0],p[1],p[2]))
 		var hit := root.world_3d.direct_space_state.intersect_ray(PhysicsRayQueryParameters3D.create(at+Vector3.UP*12,at-Vector3.UP*12,1))

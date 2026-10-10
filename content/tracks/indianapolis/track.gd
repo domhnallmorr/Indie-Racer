@@ -1,6 +1,7 @@
 @tool
 extends Node3D
-## Surfaces and collisions share exactly the same imported sample geometry.
+## Surfaces and collisions use the imported samples; level road collision
+## strips omit redundant interior triangles without changing the visual mesh.
 ## Build visuals in the 3D editor too; physics is only needed during play.
 var camera_positions: Array = []
 var bank_focus := Vector3.ZERO
@@ -74,6 +75,7 @@ func _build_strip(data: Dictionary) -> void:
 	if data.collision and not Engine.is_editor_hint():
 		instance.create_trimesh_collision()
 		if data.name == "RacingSurface":
+			preload("res://content/tracks/indianapolis/road_collision.gd").apply(instance)
 			# This mesh contains only the road skin; barriers are separate bodies.
 			# Vehicle contact handling can verify spurious lateral triangle-edge
 			# normals against the walkable face before applying a wall impulse.

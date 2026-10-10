@@ -4,6 +4,8 @@ Usage: python tools/build_indianapolis.py PATH_TO_IMS2000
 LP files contain lateral offsets, not an XY layout: IMS2000.DAT supplies TRK.
 """
 import argparse
+import bisect
+import csv
 import hashlib
 import json
 import math
@@ -19,6 +21,36 @@ INNER = 13.1064
 FT = .3048
 RAMP = 220.0
 EXTENSION = 40.0
+BANKING_PROFILE = PACKAGE / 'banking_profile.csv'
+
+
+def load_banking_profile(path=BANKING_PROFILE):
+    """Interpolate supplied signed crossfall, aligned to the scaled TRK lap."""
+    with path.open(newline='') as handle:
+        rows = list(csv.DictReader(handle))
+    distances = [float(row['distance_ft']) * FT for row in rows]
+    angles = [float(row['banking_degrees']) for row in rows]
+    if (len(rows) < 2 or not all(math.isfinite(v) for v in distances + angles)
+            or distances[0] != 0 or distances[-1] <= 0
+            or any(b <= a for a, b in zip(distances, distances[1:]))
+            or abs(angles[0] - angles[-1]) > 1e-8
+            or any(abs(v) >= 45 for v in angles)):
+        raise ValueError('Invalid or non-continuous banking profile')
+    source_length = distances[-1]
+    distances = [s / source_length * LAP for s in distances]
+
+    def bank(s):
+        s %= LAP
+        i = min(bisect.bisect_right(distances, s) - 1, len(distances) - 2)
+        fraction = (s - distances[i]) / (distances[i + 1] - distances[i])
+        return angles[i] + fraction * (angles[i + 1] - angles[i])
+
+    return bank, {'file': 'banking_profile.csv',
+                  'sha256': hashlib.sha256(path.read_bytes()).hexdigest(),
+                  'source_reference_length_m': source_length,
+                  'distance_scale': LAP / source_length,
+                  'samples': len(rows), 'interpolation': 'linear',
+                  'min_banking_deg': min(angles), 'max_banking_deg': max(angles)}
 
 
 def smooth(t):
@@ -38,7 +70,7 @@ def build(source):
         lines[name] = list(struct.iter_unpack('<iii', data[4:]))
     scale = LAP/(track.length*UNIT)
     starts = [s[1]/track.length*LAP for s in track.sections]
-    # Four distinct turns, with flat short chutes between turns 1/2 and 3/4.
+    # Four geometric turns; the imported crossfall also banks the short chutes.
     turns = [(starts[a], starts[b]) for a,b in [(5,11),(16,21),(29,34),(38,44)]]
 
     def turn_weight(s):
@@ -46,7 +78,8 @@ def build(source):
         return max(smooth((s-a+EXTENSION)/RAMP)*smooth((b+EXTENSION-s)/RAMP)
                    for a, b in turns)
 
-    def bank(s): return 9.2*turn_weight(s)
+    bank, bank_source = load_banking_profile()
+    # Keep the existing horizontal width transitions independent of crossfall.
     def width(s): return (50+10*turn_weight(s))*FT
     # Provisional apron: no Indianapolis apron dimension was supplied.
     def apron(s): return 12*FT
@@ -102,12 +135,23 @@ def build(source):
     speeds = [lp('RACE',s,0) for s in ss]
     lap_time = sum(math.dist(race[i],race[i+1])/((speeds[i]+speeds[(i+1)%count])/2) for i in range(count))
     write('ai/race_line.json',{'schema_version':1,'units':'metres','points':race})
+    # Authored corner boundaries keep their indices, but must follow new heights.
+    corner_file = PACKAGE/'ai/corner_regions.json'
+    if corner_file.exists():
+        corners = json.loads(corner_file.read_text())
+        if corners['reference_point_count'] != count:
+            raise ValueError('Corner regions must be reindexed for the new sample count')
+        for region in corners['regions']:
+            for marker in ('entry', 'exit'):
+                region[marker+'_point'] = race[region[marker+'_index']]
+        write('ai/corner_regions.json',corners)
     write('ai/racing_corridor.json',corridor)
     write('ai/race.lp.json',{'schema_version':1,'method':'ICR2','reference_points':race,
           'speed_mps':speeds,'imported_speed_mps':speeds,'reference_lap_s':lap_time,
           'roster_reference_lap_s':21.097133,'driver_pace_spread':.45,'driver_speed_weighting':'profile_range',
           'source':'Indianapolis RACE.LP speeds; lateral groove remapped between MINRACE/MAXRACE to authored widths. Player pace not yet calibrated.'})
-    write('ai/profiles.json',json.loads((ROOT/'content/tracks/mile_oval/ai/profiles.json').read_text()))
+    if not (PACKAGE/'ai/profiles.json').exists():
+        write('ai/profiles.json',json.loads((ROOT/'content/tracks/mile_oval/ai/profiles.json').read_text()))
     write('ai/racecraft.json',{'schema_version':1,'overrides':{'passing_speed_factor':1.0,'lane_blend_distance_m':90}})
     write('ai/pit_out.lp.json',{'schema_version':1,'departure_kph':55,'cruise_kph':140,'merge_acceleration_m':600})
 
@@ -133,14 +177,18 @@ def build(source):
           'exit_line_x':limiter['position'][0],'exit_pose':limiter}})
     write('ai/reference_paths.json',{'units':'metres','reference_length_m':LAP,'straight_length_m':starts[29]-starts[21],
           'reference_path':closed(lambda s:point(s,INNER-width(s)/2)),'pit_path':pit,
-          'start_finish_position':point(0,INNER-width(0)/2),'max_banking_deg':9.2,
-          'frontstretch_banking_deg':0,'backstretch_banking_deg':0,'short_chute_banking_deg':0,'bank_transition_m':RAMP,
-          'bank_transition_on_straight_m':EXTENSION,'bank_turn_sections':[[a,b,9.2] for a,b in turns]})
+          'start_finish_position':point(0,INNER-width(0)/2),'max_banking_deg':bank_source['max_banking_deg'],
+          'min_banking_deg':bank_source['min_banking_deg'],'banking_profile':bank_source,
+          'frontstretch_banking_deg':0,'backstretch_banking_deg':0,
+          'short_chute_banking_deg':bank((turns[2][1]+turns[3][0])/2),
+          'short_chute_midpoint_banking_deg':[bank((turns[i][1]+turns[i+1][0])/2) for i in (0,2)],
+          'width_transition_m':RAMP,'width_transition_on_straight_m':EXTENSION,
+          'bank_turn_sections':[[a,b,bank_source['max_banking_deg']] for a,b in turns]})
     write('ai/timing_gates.json',{'schema_version':1,'units':'metres','gates':[
           {'name':name,'point':point(s,INNER-width(s)/2),'normal':tangent(s,0),'half_width_m':20,'min_height_m':-1,'max_height_m':12}
           for name,s in [('StartFinish',0),('Turn1',500),('Turn2',1100),('Backstraight',2000),('Turn3',2510),('Turn4',3115)]]})
     write('manifest.json',{'schema_version':1,'type':'track','id':'indianapolis','display_name':'Indianapolis Motor Speedway',
-          'description':'2.5-mile ICR2-derived oval; four 9.2 degree turns and flat straights.',
+          'description':'2.5-mile ICR2-derived oval; imported 9.267 degree turns, banked short chutes and flat long straights.',
           'scene':'scenes/track.tscn','units':'metres','length_m':LAP,'direction':'counterclockwise',
           'racing_width_m':50*FT,'turn_width_m':60*FT,'straight_width_m':50*FT,
           'turn_apron_width_m':12*FT,'straight_apron_width_m':12*FT,'pit_boxes':26,'pace_car_boxes':1})
@@ -209,8 +257,8 @@ def build(source):
     write('source.json',{'files':{name:hashlib.sha256((source/name).read_bytes()).hexdigest()
           for name in ['Ims2000.dat','RACE.LP','MINRACE.LP','MAXRACE.LP']},
           'source_reference_length_m':track.length*UNIT,'scale':scale,'lp_samples':len(lines['RACE']),
-          'reference_lap_s':lap_time,'bank_transition_m':RAMP,
-          'changes':'TRK plan scaled to 2.5 miles. Requested widths are horizontal road widths, excluding a provisional 12 ft flat apron. 220 m quintic banking ramps begin 40 m before turns. MIN/MAX LP bounds map to 1.7 m edge clearances; RACE retains relative lateral position and imported speeds. Pit road and passing lanes newly authored; no Indianapolis scenery imported.'})
+          'reference_lap_s':lap_time,'banking_profile':bank_source,'width_transition_m':RAMP,
+          'changes':'TRK plan scaled to 2.5 miles. Banking interpolated from the user-extracted banking_profile.csv, including banked short chutes and signed entry crossfall. Requested horizontal widths retain 220 m quintic transitions and a provisional 12 ft flat apron. MIN/MAX LP bounds map to 1.7 m edge clearances; RACE retains relative lateral position and imported speeds. Pit road and passing lanes newly authored; no Indianapolis scenery imported.'})
     print('Built Indianapolis:',LAP,'m; reference lap',round(lap_time,3),'s; banks',sorted(set(round(bank(s),2) for s in [0,500,800,1100,2000,2510,2810,3115])))
 
 

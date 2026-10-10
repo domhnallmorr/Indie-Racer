@@ -32,13 +32,32 @@ func start(player: Node, directory: String = "user://telemetry") -> Error:
 	header += ",automatic_gears,direct_wheel_steering,clutch_engagement,clutch_torque_min_nm,clutch_torque_max_nm,engine_opening,integration_steps"
 	header += ",handling_model"
 	header += ",front_left_omega_rad_s,front_right_omega_rad_s"
+	header += ",rear_stagger_mm,rear_stagger_active,rear_left_radius_m,rear_right_radius_m,rear_track_yaw_moment_nm"
+	for corner in ["fl","fr","rl","rr"]:
+		header += ","+corner+"_slip_ratio,"+corner+"_slip_deg,"+corner+"_fx_n,"+corner+"_fy_n"
+	header += ",rl_yaw_moment_nm,rr_yaw_moment_nm"
+	header += ",rear_differential_active,rear_left_omega_rad_s,rear_right_omega_rad_s,rear_diff_drive_lock,rear_diff_coast_lock,rear_diff_preload_nm,rear_diff_drive_phase,rear_diff_capacity_nm,rear_coupling_torque_nm,rear_coupling_dissipation_j"
+	header += ",dynamic_roll_pitch,body_roll_deg,body_pitch_deg,body_roll_rate_deg_s,body_pitch_rate_deg_s,roll_reaction_nm,pitch_reaction_nm"
+	header += ",wheel_travel_active,heave_velocity_mps,road_normal_accel_mps2"
+	for corner in ["fl","fr","rl","rr"]:
+		header += ","+corner+"_compression_m,"+corner+"_compression_rate_mps,"+corner+"_contact,"+corner+"_bump_stop_n"
 	file.store_csv_line(PackedStringArray(header.split(",")))
 	var metadata := ConfigFile.new()
 	metadata.set_value("run", "physics", player.parameters.values)
 	metadata.set_value("run", "handling_model", player.sim.handling_model_id())
+	metadata.set_value("run", "tyre_load_curve", {"model":"icr2_load_polynomial_trial_v1",
+		"native_load_units_per_n":player.sim.TYRE_NATIVE_LOAD_UNITS_PER_N,
+		"front_load_factor":1.1,"zero_load_efficiency":player.sim.TYRE_ZERO_LOAD_EFFICIENCY,
+		"linear_coefficient":2.95,"quadratic_coefficient":.0004915,"efficiency_floor":5000.0,
+		"normalization":"matched_static_weight_indy_recording","si_conversion_verified":false})
 	metadata.set_value("run", "integration", {"scheme":player.sim.INTEGRATION_SCHEME,
 		"max_step_s":player.sim.MAX_INTEGRATION_STEP_S})
+	metadata.set_value("run", "rear_differential", {"model":"bounded_clutch_hypothesis_v1","icr2_verified":false,
+		"active":player.sim.rear_differential_active(),"drive_lock":player.sim.rear_diff_drive_lock,
+		"coast_lock":player.sim.rear_diff_coast_lock,"preload_nm":player.sim.rear_diff_preload_nm,
+		"capacity_equation":"preload + 0.5 * abs(axle_input_torque) * phase_lock_factor"})
 	metadata.set_value("run", "aero_track_key", player.aero_setup_key)
+	metadata.set_value("run", "suspension", player.sim.suspension.metadata())
 	metadata.set_value("run", "wind_world_mps", player.wind_world_mps)
 	metadata.set_value("run", "wheel_bindings", player.wheel_input.bindings)
 	metadata.set_value("run", "track_transform", player.track.global_transform)
@@ -78,8 +97,19 @@ func record(player: Node, delta: float, inputs: Vector3, normal: Vector3, gravit
 	values.append_array([sim.p.front_roll_stiffness_fraction,sim.lateral_contact_acceleration,sim.front_lateral_transfer_n,sim.rear_lateral_transfer_n])
 	values.append_array([int(sim.automatic),int(sim.direct_steering),sim.clutch,sim.clutch_torque_min_nm,sim.clutch_torque_max_nm,sim.engine_opening,sim.integration_steps])
 	values.append(sim.handling_model_id())
-	var free_front: bool = sim.experimental_wheel_motion and sim.independent_front_rotation
-	values.append_array([sim.front_left_omega if free_front else sim.front_omega,sim.front_right_omega if free_front else sim.front_omega])
+	values.append_array([sim.front_left_omega,sim.front_right_omega])
+	values.append_array([0.0,0,sim.p.rear_radius_m,sim.p.rear_radius_m,sim.rear_track_yaw_moment_nm])
+	for i in range(4):
+		values.append_array([sim.wheel_slip_ratios[i],rad_to_deg(sim.wheel_slip_angles[i]),sim.wheel_forces[i].x,sim.wheel_forces[i].y])
+	values.append_array([sim.rear_left_yaw_moment_nm,sim.rear_right_yaw_moment_nm])
+	values.append_array([1,sim.rear_left_omega,sim.rear_right_omega,
+		sim.rear_diff_drive_lock,sim.rear_diff_coast_lock,sim.rear_diff_preload_nm,int(sim.rear_diff_drive_phase),sim.rear_diff_capacity_nm,
+		sim.rear_coupling_torque_nm,sim.rear_coupling_dissipation_j])
+	values.append_array([int(sim.suspension.enabled),rad_to_deg(sim.suspension.roll),rad_to_deg(sim.suspension.pitch),
+		rad_to_deg(sim.suspension.roll_rate),rad_to_deg(sim.suspension.pitch_rate),sim.suspension.roll_reaction_nm,sim.suspension.pitch_reaction_nm])
+	values.append_array([int(sim.suspension.travel_active()),sim.suspension.heave_velocity_mps,sim.road_normal_acceleration])
+	for i in range(4):
+		values.append_array([sim.suspension.compression[i],sim.suspension.compression_rate[i],sim.suspension.contact[i],sim.suspension.bump_stop_loads[i]])
 	var row := PackedStringArray()
 	for value in values:
 		row.append(str(value))

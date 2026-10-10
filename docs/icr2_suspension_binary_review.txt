@@ -1,0 +1,74 @@
+ICR2 suspension inspection -- 10 October 2026
+
+Source: user-supplied INDYCAR.EXE, SHA-256
+83ccee7341b31ce2fdebfb453dfaaf443c1e80687693e6ba4b71a71dd8256267
+Static inspection only. Original executable was not executed or modified.
+Addresses below are code-object virtual addresses for this build.
+
+Confirmed observations
+
+The initialized data contains RF Shock, RR Shock, LR Shock and LF Shock.
+The menu at 0x68250 selects those labels from the pointer table at data
+0x105A4. Its increment/decrement callbacks at 0x68124 and 0x68148 call
+getter 0x13D40 and setter 0x13C94, with steps of five.
+
+Setter 0x13C94 clamps the requested setting to 0..100, maps wheel index
+through 0x1353C, stores the setting in data 0x25BF4, and computes
+clamp(2047 + trunc(setting*2048/100), 2047, 4095). It writes that coefficient
+to two words in the indexed 8-byte records beginning at data 0x8760,
+then calls 0x18BC4. These numbers are internal coefficients, not recovered
+spring rates in N/m or damping rates in N*s/m.
+
+Routine 0x18BC4 adds corner coefficients and two further setup coefficients
+at 0x8780/0x8782. It stores totals and fixed-point ratios at 0x878A..0x8792.
+The adjacent setter 0x13D50 clamps its own setting to 1..8 and writes
+2047 + 768*setting to 0x8780 + 2*index; its menu identity is unverified here.
+
+The running routine at 0x15E94 uses those totals and ratios. It updates
+persistent signed 16-bit state at 0x8714 and 0x8716 using target-minus-state
+terms and fixed-point coefficients. Paired components at 0x8718..0x871E
+are added/subtracted from baseline corner quantities, producing four loads
+at 0x870C..0x8712. Each is clipped to zero if negative. Those loads feed
+the tyre response paths documented in the earlier tyre investigation.
+
+Later arithmetic at 0x161BE..0x163F3 divides corner baseline quantities by
+the individual shock coefficients and combines the results with transfer
+terms. Several outputs are bounded to 0..574. This is consistent with
+corner deflection/pose calculation, but their physical meaning and consumers
+have not been fully traced.
+
+Interpretation and limits
+
+Strong evidence: per-corner shock setup affects a compact stateful transfer
+and wheel-load model. It is more than a purely visual menu setting.
+Plausible interpretation: an economical suspension compliance/settling
+approximation with derived corner pose. The name 'Shock' alone does not
+prove a physically separate spring and velocity-dependent damper model.
+Not established: independent wheel vertical velocities, unsprung masses,
+spring/damper force equations, bump stops, road-height excitation, camber
+kinematics, SI conversions, or absence of those features elsewhere.
+
+Project recommendation
+
+The player already evaluates four tyre loads and individual tyre forces,
+making suspension a useful next development. Existing longitudinal and
+lateral transfer filters are approximations; road sampling at four corners
+currently aligns the visual mesh only. CharacterBody floor snap and the
+surface-step helper still control physical support.
+
+Start with an isolated dynamic roll/pitch prototype that reproduces the
+current steady-state load distribution. Then add heave, physical corner road
+samples, effective wheel springs/dampers, anti-roll coupling and travel limits.
+The suspension-derived loads must replace the existing transfer calculation,
+not be added to it. Define which system owns vertical support so floor snap
+does not suppress suspension motion or maintain contact over crests.
+
+Keep the current tyre curve and differential settings fixed during comparison.
+Validate parked equilibrium, braking/turn-in settling, a single-wheel bump,
+banking, contact loss, and timestep convergence. The tyre curve already has
+unresolved historical slide-regression bounds, so preserve the current baseline
+before making suspension the default. Defer unsprung-mass and camber complexity
+until the simpler model is stable and useful in driving comparisons.
+
+Reproduce: python tools/analyse_icr2_suspension.py PATH_TO_INDYCAR.EXE
+Output: tmp/icr2_analysis/suspension_binary_trace.json

@@ -1,0 +1,19 @@
+[remap]
+
+importer="csv_translation"
+type="Translation"
+uid="uid://cgv8w6arfg2f3"
+
+[deps]
+
+files=["res://content/tracks/indianapolis/banking_profile.banking.translation", "res://content/tracks/indianapolis/banking_profile.section.translation"]
+
+source_file="res://content/tracks/indianapolis/banking_profile.csv"
+dest_files=["res://content/tracks/indianapolis/banking_profile.banking.translation", "res://content/tracks/indianapolis/banking_profile.section.translation"]
+
+[params]
+
+compress=1
+delimiter=0
+unescape_keys=false
+unescape_translations=true

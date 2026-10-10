@@ -174,6 +174,10 @@ func refresh() -> void:
 		load_rows[i][3].text = "UNLOADED" if sim.wheel_loads[i] < 1.0 else "SLIDING" if sim.wheel_demand[i] > 1.0 else "NEAR LIMIT" if sim.wheel_usage[i] > .9 else "GRIPPING"
 		load_rows[i][3].modulate = Color(1,.35,.25) if sim.wheel_demand[i] > 1.0 else AMBER if sim.wheel_usage[i] > .9 else MUTED
 	roll_balance.text = "Roll stiffness: %.0f%% front / %.0f%% rear" % [sim.p.front_roll_stiffness_fraction*100.0,(1.0-sim.p.front_roll_stiffness_fraction)*100.0]
+	if sim.suspension.enabled:
+		roll_balance.text += "\nBody roll %+.2f° / pitch %+.2f°" % [rad_to_deg(sim.suspension.roll),rad_to_deg(sim.suspension.pitch)]
+		if sim.suspension.travel_active():
+			roll_balance.text += "\nTravel FL/FR/RL/RR: %.0f / %.0f / %.0f / %.0f mm" % [sim.suspension.compression[0]*1000,sim.suspension.compression[1]*1000,sim.suspension.compression[2]*1000,sim.suspension.compression[3]*1000]
 	var racing: bool = session.session_type == session.SessionType.RACE
 	var sorted: Array = timing.track_order() if racing else timing.standings()
 	var entry: Dictionary = {}

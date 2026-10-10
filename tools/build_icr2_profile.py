@@ -10,9 +10,12 @@ import math
 from pathlib import Path
 
 
-def build(path):
+def build(path, track='mile_oval'):
     root = Path(__file__).resolve().parents[1]
-    folder = root / 'content/tracks/mile_oval/ai'
+    if track not in {p.name for p in (root / 'content/tracks').iterdir() if p.is_dir()}:
+        raise ValueError('Unknown track')
+    folder = root / 'content/tracks' / track / 'ai'
+    existing = json.loads((folder / 'race.lp.json').read_text())
     line = json.loads((folder / 'race_line.json').read_text())
     points = line['points'][:-1]
     gates = json.loads((folder / 'timing_gates.json').read_text())['gates']
@@ -42,6 +45,8 @@ def build(path):
         j,u,_ = events[last]
         lap = rows[i:j+1]
         if any(r['surface'] != 'tarmac' or int(r['pit_limit']) or not int(r['grounded']) for r in lap):
+            continue
+        if any(float(r.get('wall_delta_v_mps', 0)) > .1 for r in lap):
             continue
         laps.append((u-t, i, j))
     if not laps:
@@ -80,14 +85,20 @@ def build(path):
     # Approximately six metres of smoothing preserves braking locations.
     speeds = [sum(speeds[(i+d)%n] for d in (-1,0,1))/3 for i in range(n)]
     lap = sum(2*d/(speeds[i]+speeds[(i+1)%n]) for i,d in enumerate(lengths))
-    profile = dict(schema_version=1, method='ICR2', units='metres, seconds',
+    profile = dict(existing)
+    profile.update(dict(schema_version=1, method='ICR2', units='metres, seconds',
                    source=f'Player telemetry {path.name}; fastest complete clean lap, spatially projected onto current line. Measured speeds, no lap-time normalization.',
                    source_sha256=hashlib.sha256(path.read_bytes()).hexdigest(),
                    source_lap_s=seconds, source_rows=[start+2,end+2],
                    clean_laps_s=[s for s,_,_ in laps],
                    reference_lap_s=lap, reference_points=line['points'],
-                   speed_mps=[round(s,5) for s in speeds])
-    (folder/'race.lp.json').write_text(json.dumps(profile,indent=2)+'\n')
+                   speed_mps=[round(s,5) for s in speeds]))
+    if track != 'mile_oval':
+        # Retain the conservative all-lane plan for tactical paths. A player
+        # reference describes clean-air RACE, not every inside/outside bend.
+        profile.setdefault('tactical_speed_mps', existing['speed_mps'])
+    encoded = json.dumps(profile, indent=2) if track == 'mile_oval' else json.dumps(profile, separators=(',', ':'))
+    (folder/'race.lp.json').write_text(encoded+'\n')
     print(json.dumps({k:profile[k] for k in ('clean_laps_s','source_lap_s','reference_lap_s','source_rows')},indent=2))
     print(f'Wrote {n} samples: {min(speeds)*3.6:.1f}-{max(speeds)*3.6:.1f} km/h')
 
@@ -95,4 +106,6 @@ def build(path):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--telemetry',type=Path,required=True)
-    build(parser.parse_args().telemetry)
+    parser.add_argument('--track',default='mile_oval')
+    args = parser.parse_args()
+    build(args.telemetry, args.track)

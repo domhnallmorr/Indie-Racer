@@ -100,6 +100,7 @@ func _ready() -> void:
 	player.load_aero_setup(track_session_file)
 	player.load_gearing_setup(track_session_file)
 	player.load_roll_setup(track_session_file)
+	player.load_suspension_setup(track_session_file)
 	_configure_track_fuel(player_state)
 	_update_pit_state()
 	_add_limiter_end_marker()

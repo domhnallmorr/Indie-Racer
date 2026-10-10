@@ -26,6 +26,13 @@ func _ready() -> void:
 		_box("Surf",Vector3(0,-.28,z),Vector3(6500,.025,2.5),"#b5d7cb")
 	for building in data.buildings:
 		_building(building)
+	if not data.get("final_turn_landmark",{}).is_empty():
+		var landmark = preload("res://content/tracks/surfers_paradise/landmark_tower.gd").new()
+		landmark.name = "FinalTurnLandmark"
+		landmark.position = _v(data.final_turn_landmark.position)
+		landmark.rotation.y = deg_to_rad(data.final_turn_landmark.heading_deg)
+		landmark.specification = data.final_turn_landmark
+		add_child(landmark)
 	for palm in data.palms:
 		_palm(palm)
 	for board in data.brake_boards:
@@ -45,6 +52,11 @@ func _ready() -> void:
 		_box("GrandstandRoof",Vector3(-4,7,0),Vector3(11,.3,74),"#d9d4be",false,node)
 		for z in [-33,0,33]:
 			_box("StandSupport",Vector3(-7,3.5,z),Vector3(.25,7,.25),"#637578",false,node)
+	if not data.get("main_straight_stands",[]).is_empty():
+		var main_stands = preload("res://content/tracks/surfers_paradise/main_straight_stands.gd").new()
+		main_stands.name = "MainStraightGrandstands"
+		main_stands.stands = data.main_straight_stands
+		add_child(main_stands)
 	var pit := Node3D.new()
 	pit.position = _v(data.pit_building.position)
 	pit.rotation.y = deg_to_rad(data.pit_building.heading_deg)

@@ -1,0 +1,245 @@
+Indianapolis sprung-body suspension, stage 3 -- 10 October 2026
+
+Driven v6 validation -- practice_2026-10-10T15-18-26_8007.csv
+
+160.71 s / 19285 samples confirms 120 Hz telemetry. Two complete laps crossed
+all six timing gates in order: 40.087 s and 39.793 s, without wall impacts.
+Existing high-speed corner filter (>250 km/h, tarmac, supported, excluding
+wall impacts +/-2 s) gives roll p95 1.193 degrees, pitch p95 .226 degrees,
+and sideslip p95 3.168 degrees versus accepted v2's 3.157 degrees. Rear tyre
+post-peak exposure is .02 s in 58.77 s of filtered turns. Wings, front roll
+share, differential and assists match that baseline; line/speed/fuel differ,
+so these are descriptive comparisons, not a controlled handling equivalence.
+
+The intentional apron spin is in Turn 1 after the final timed lap. Reconstructed
+wheel positions relative to the authored inner-edge polyline put front-left
+over the boundary at approximately 150.600 s / 361.6 km/h, then rear-left at
+150.633 s. These positions are inferred from heading/normal and visual tyre
+contact geometry, not directly recorded per-wheel surface identifiers.
+At 151.000 s rear-left Fz is 1364 N versus rear-right 10578 N, rear slip
+4.18 degrees and rear-right demand is above peak. Rear-left reaches zero
+at 151.167 s; by 151.175 s rear slip is 10.0 degrees while throttle remains
+about 67%. By 151.400 s rear slip is 33.6 degrees. The wall impact occurs
+later at 152.742 s, so wall contact does not initiate this spin.
+
+Before that wall impact, pitch remains within .47 degrees and roll within
+1.49 degrees. The rear-right bump stop does engage briefly during the apron
+event; the previous flat/bank spin regression's zero-stop result must not be
+generalized to this mixed-height event. Whole-run pitch stays within .64 degrees.
+The sequence supports apron-induced rear unloading and grip loss, but does
+not establish a calibrated real-car apron threshold. Keep the current settings
+for further driving tests. No physics changes were made from this data review.
+
+Frame-time report: 9638 measured frames, mean 16.67 ms, three frames above
+33 ms and one above 50 ms; this private test has no AI. Do not infer AI-session
+performance from it. Audit details are in tmp/icr2_analysis/indy_v6_apron_event.json
+and indy_v6_driven_comparison.json.
+
+Spin support and stiff-travel revision (current profile v6)
+
+practice_2026-10-10T15-01-46_7964.csv records yaw up to 385.7 degrees/s and
+70.8 kN of added banking load. Body yaw was being used as velocity-trajectory
+curvature, which is invalid during a spin. In travel mode normal support now
+uses -tangent_world_velocity dot (new_world_normal-old_world_normal)/dt.
+This follows the road normal along motion instead of increasing with body yaw.
+The accepted roll/pitch comparison retains its previous banking calculation.
+Telemetry adds road_normal_accel_mps2 and the sidecar identifies this method.
+
+Body-up and roll/pitch angular velocity are transported between complete world
+road bases, at road sampling and after heading integration. Reference yaw alone
+cannot turn the bank's tilt into suspension pitch. The previous v5 parent-yaw
+normal rotation shortcut is superseded. The apron fixture checks preservation
+of world body-up under changes of reference, rather than requiring zero road
+angular rate when a bank physically rotates in world space.
+
+Travel-only authored rates: heave 1200000 N/m (3x); pitch 6x the accepted
+stiffness; roll stiffness and effective inertia both 2x (half lean with the
+accepted roll-reaction timing). Damping ratio remains .8. Bump travel is 60 mm,
+droop 50 mm, and corner bump-stop stiffness 3000000 N/m. The stage-2 comparison
+retains its existing rates. No tyre, differential, wing, gearing, assist or
+front roll-share tune was made. These are prototype rates, not recovered ICR2
+SI values or measured real-car parameters.
+
+Project physics/road/collision sampling is now 120 Hz, including other tracks;
+the model retains its <=0.5 ms integration substeps. This stiff profile's
+30 mm bump peak-load difference is 3.7% between 120 and 240 Hz, within the
+existing 8% bound. At 60 Hz the difference is 12.3%; that cadence remains a
+diagnostic, not the selected runtime. Increased collision/AI tick cost should
+be checked in the next driven session's frame-time recording.
+
+validate_suspension_spin.gd prescribes the recorded 52.5--54.8 s horizontal
+motion/yaw while leaving suspension height free. Peak computed banking load
+is about 5.15 kN versus 68.96 kN from the old yaw formula on the same replay.
+Pitch peaks at 0.63 degrees, corner compression at 42 mm, and bump-stop force
+stays zero. This is a support regression, not an exact driver replay or proof
+that all initial oversteer is resolved. The 10 kN aero equilibrium fixture now
+compresses by 8.33 mm rather than 25 mm; four-corner steady loads remain matched
+to the accepted transfer split. Corner/apron/bump/landing/comparison and legacy
+modal/tyre-load checks pass. Evaluate the next driven run at unchanged setup.
+
+Apron and road-frame corrections (profile v5)
+
+Review of practice_2026-10-10T14-47-07_8063.csv confirms increased rear slip
+in some turns, alongside sharp road-frame events at the apron. This is not
+enough to attribute the whole handling change to stiffness: driving inputs,
+line, speed and transient road geometry differ from the accepted v2 run.
+Steady four-corner load comparisons now explicitly cover 9-degree banking,
+95 m/s at 0.2 rad/s yaw, aero and braking, at front roll shares .4/.5/.6.
+They match the accepted transfer split within 0.1 N. No roll-balance, tyre,
+differential, aero or gearing tune was applied to conceal the transient issues.
+
+The road frame is fitted to the four sampled heights instead of averaging
+discontinuous triangle normals. Before comparing successive frames, the old
+normal is carried through the parent's yaw, so yaw on constant banking is not
+a new pitch input. A frame rotation changes both measured gap and relative
+body angle: their angular-rate terms cancel in physical compression rate.
+Only actual road-point velocity and body heave/angular velocity enter damping.
+This removes an extra damper input during road-frame transitions. Wheel meshes
+follow geometrically reachable road even when delivered force momentarily
+clamps to zero; zero force no longer sends both front wheels to full droop.
+
+validate_suspension_apron.gd crosses a continuous-height, sharp-normal seam
+between flat apron and a nine-degree bank, diagonal to the car. At 5 mm of
+sideways travel per frame, maximum wheel-height step is 0.805 mm and frame-angle
+step is 0.030 degrees. Rotating the car and road together produces less than
+0.00005 rad/s spurious road-rate input. The model fixture separately checks
+that coordinate relabelling cannot create spring/damper loads.
+
+Clean high-speed samples in the driven v4 run (>280 km/h, rear slip <8 degrees,
+all four loaded contacts) show weighted compression of 24 mm median / 40 mm
+95th percentile. Some larger transients remain in that recording. Heave
+stiffness stays at 400000 N/m while the transition corrections are evaluated;
+these measurements are not a claim that the authored rate is realistic.
+
+Banking collision fix (profile v4)
+
+The first driven v3 run, practice_2026-10-10T14-35-07_7748.csv, exposed an
+upright collision box interfering with banked road support. Road contacts
+started around 68.5 s without wall impacts; later pitch reached 14.59 degrees
+and roll 17.03 degrees as wheel loads dropped out. The collider now follows
+the road plane while retaining its normal clearance above the tyres.
+
+validate_indy_corner_support.gd uses a fixture extracted from 66--69.3 s of
+that recording. Horizontal-path replay leaves heave continuous, unlike the
+earlier reference-path test. Before the fix it registered 68 floor-contact
+frames and minimum total support of 12380 N. After the fix it registers zero
+floor-contact frames and minimum support of 15906 N; peak roll is 1.98 degrees
+and pitch 1.48 degrees. A second pass integrates position/yaw freely using
+the recorded inputs and initial engine/wheel/gearing/aero values. It retains
+support without floor contact, with peak roll 2.07 degrees and pitch 0.83.
+This short regression checks the corner-entry fault, not an exact full-lap
+replay: body initial conditions and subsequent trajectories can differ.
+Banking, bump, landing and comparison-toggle regressions also pass.
+
+Driving test
+
+Restart Indianapolis in Private Testing. The human player initially uses
+dynamic suspension with Heave and wheel travel enabled. In the pit stall,
+Edit Car Setup -> Roll Balance exposes both checkboxes. Uncheck travel and
+apply to return to the accepted stage-2 roll/pitch model. Uncheck Dynamic
+suspension to compare with the original transfer filters. Both preferences
+save per track in user://mechanical_setups.cfg. Other tracks and AI retain
+their existing support. Changing these settings resets dynamics while parked.
+F5 shows body angles and FL/FR/RL/RR compression relative to loaded ride height.
+Telemetry records active travel, heave velocity, corner compression/rate,
+actual contact and bump-stop force. The sidecar records profile v6 and rates.
+
+Implementation
+
+travel_suspension.gd extends the previous body modes. The accepted roll and
+pitch stiffnesses, effective inertias and damping ratio remain the baseline.
+Four corner springs/dampers plus positive heave and roll/pitch coupling springs
+form a sprung-body model. Corner spring shares follow the static front weight
+fraction; coupling rates complete the target heave/roll/pitch stiffnesses and
+the existing selectable front roll share. This is an authored modal suspension
+assembly, not a recovered ICR2 linkage or certified set of physical wheel rates.
+No individual unsprung wheel masses are integrated.
+
+For corner i, x_i is forward axle lever, y_i is leftward half track width,
+g_i is sampled normal gap from body origin to the road, and z is normal body
+displacement since the start of this tick:
+
+  compression_i = ride_height - g_i + road_velocity_i*t - z
+                  - x_i*pitch - y_i*roll
+  compression_rate_i = road_velocity_i - heave_velocity
+                       - x_i*pitch_rate - y_i*roll_rate
+
+Road motion is sampled once per physics tick and extrapolated inside the
+existing <=0.5 ms model substeps. The road rays use the authored visual tyre
+contact positions; moments retain the existing physics wheelbase/track widths.
+Those two geometries remain approximate rather than perfectly matched.
+Changes in road-plane orientation transport the body angles instead of
+instantly tilting the chassis. Road-point motion supplies the damper input;
+coordinate-frame rotation alone must not excite damping.
+
+Each delivered Fz_i is the positive spring/damper-plus-bump-stop reaction,
+only when a road sample exists and compression is within droop reach. Loads
+never pull on the road, and an unsupported wheel has zero tyre force. These
+loads replace the previous transfer split. The body equations are:
+
+  m*z_ddot = sum(Fz_i) - m*normal_support_accel - front_aero - rear_aero
+  I_roll*roll_ddot = lateral_contact_force*cg_height + sum(y_i*Fz_i)
+  I_pitch*pitch_ddot = longitudinal_contact_force*cg_height + sum(x_i*Fz_i)
+                       - a*front_aero + b*rear_aero
+
+Normal support uses the sampled world road-normal acceleration. All three
+states integrate semi-implicitly. Freefall includes normal and tangent gravity,
+so airborne motion on a bank still follows world-down. The old transfer filters
+are not added to these forces. Static preload sets the reference normal-weight
+distribution, while aero and banking load compress the suspension. Front/rear
+aero imbalance now creates physical pitch trim; unlike stage 2, pitch is not
+restricted to contact-force acceleration alone.
+
+Authored stage-3 parameters
+
+Loaded reference support height: 0.16 m. Total heave stiffness: 1200000 N/m.
+Travel pitch stiffness scale: 6; roll stiffness/inertia scale: 2.
+Damping ratio: 0.8. Compression limit before bump stop: +0.06 m.
+Droop reach relative to reference: -0.05 m. Bump-stop stiffness: 3000000 N/m
+per corner, beyond the compression limit. The bump stop is progressive force,
+not a hard compression clamp. Parameters are in indy_suspension.cfg.
+The ICR2 shock values remain LF 85, RF 70, LR 75, RR 65; their mean recovered
+coefficient scales the authored roll/pitch rates. They are not SI wheel rates.
+
+Game support and visuals
+
+With travel active, actual chassis normal motion comes from suspension, and
+floor snap plus the surface-step helper are bypassed. On a freshly placed car
+near a road, initial support height is established once; a car placed beyond
+droop falls normally. The collision box follows the sampled road orientation
+for wall/car contacts and emergency chassis-ground contact. Its base remains
+at the body origin, above the tyre plane, so banking cannot lift the chassis
+by its uphill edge. It does not rotate with dynamic body roll/pitch. Disabling
+travel restores the original collision transform.
+Chassis meshes and cockpit follow the dynamic modes; each wheel independently
+follows reachable road height or its droop position. Tyre spin remains separate.
+The visual suspension arms are not articulated. Camber, per-wheel surface grip,
+tyre vertical compliance, unsprung mass, and rollover are still unmodelled.
+
+Verification
+
+validate_suspension_travel.gd: static and aero/braking equilibrium, unilateral
+loads, 30 mm single-wheel bump, dissipative settling, 60/120/240 Hz refinement,
+bump-stop activation, droop release, freefall and reset pass. The 10 kN aero
+fixture compresses heave by 8.33 mm at equilibrium, retaining axle load balance.
+Bump peak body rise is 8.00/7.64/7.47 mm at 60/120/240 Hz; peak roll is about
+0.45 degrees. Peak left load differs by about 3.7% between 120 and 240 Hz,
+within the fixture's 8% bound; road sample cadence still affects sharp bumps.
+
+validate_suspension_bump_scene.gd: a real 30 mm collision-mesh bump under only
+the left wheels passes through player raycasts/movement. Measured body roll
+peaks around 0.48 degrees, front load asymmetry around 4607 N, heave speed
+around 0.164 m/s at 120 Hz, and the body settles afterwards. No floor snap.
+
+validate_indy_travel.gd: parked equilibrium and wheel stance on flat, banking
+and banking transitions pass. Tyre gaps are below 0.02 mm in those parked
+checks. Prescribed 95 m/s path traversal retains contact, peaks around 0.25
+degrees roll / 0.18 m/s heave speed, with no bump-stop activity. This isolates
+support from driver line choice; it is not a handling lap or lap-time result.
+Airborne freefall without snap, landing support, pit comparison and telemetry
+row alignment pass. Existing modal and tyre-load regression tests are retained.
+
+Next evaluation is a human-driven Indy session at the existing wings, gearing,
+tyres, differential, roll balance and assists. Compare travel on/off without
+changing those settings. Watch banking entry/exit, bouncing and corner unloading.
+No claim of improved lap times or ICR2 handling equivalence is made.

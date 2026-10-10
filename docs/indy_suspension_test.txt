@@ -1,0 +1,139 @@
+Indianapolis roll/pitch test -- 10 October 2026
+
+Historical stage-1/2 notes. Current stage-3 driving instructions and travel
+validation are in docs/indy_suspension_travel.txt.
+
+Start Indianapolis in Private Testing. The human player's dynamic roll/pitch
+prototype is initially enabled. AI and other tracks retain existing physics.
+While parked at the pit stall, open Edit Car Setup -> Roll Balance. Uncheck
+Dynamic roll and pitch and apply to compare with the previous transfer filters.
+This preference saves per track in user://mechanical_setups.cfg; enabling or
+disabling resets vehicle dynamics while parked. Existing roll balance remains
+independently adjustable. F5 shows the body angles; telemetry adds active state,
+angles, rates and reaction moments. The sidecar records the exact modal rates.
+
+Verified source data
+
+RACE_IND.STG is 128 bytes, SHA-256:
+bc556d3386facaf6abb5419987fe7523d5f3170a7165c1602b1fec8f27da2445
+The executable's read at 0x52C1C targets data buffer 0x3F470 for 128 bytes.
+The application loop at 0x52A81/0x52A88 reads the shock fields and calls the
+same setter used by the menu. The corner labels are RF, RR, LR, LF.
+Confirmed fields: 0x40 RF=70; 0x44 RR=65; 0x48 LR=75; 0x4C LF=85.
+Other setup fields are retained as raw integers in the decoding report.
+Wings, gearing, camber, weight distribution and anti-roll settings from this
+file have not been imported by this suspension change.
+
+Prototype parameters and hypotheses
+
+Configuration: content/vehicles/open_wheel/physics/indy_suspension.cfg
+Base authored roll stiffness 180000 N*m/rad; pitch stiffness 180000 N*m/rad.
+Effective roll inertia 1000 kg*m^2; pitch inertia 1000 kg*m^2, scaled by fuel mass.
+The roll inertia is an effective reduced-mode parameter, not measured chassis data.
+Damping ratio 0.8 for both modes. These are provisional, not ICR2 SI values.
+The recovered ICR2 mapping is coefficient=2047+floor(setting*2048/100), bounded
+to 2047..4095. We use the mean of the four coefficients divided by the
+coefficient at setting 50 (3071) to scale both stiffnesses. This yields a
+factor approximately 1.158. It is an explicitly unverified stiffness hypothesis.
+The four settings are preserved, but this two-mode implementation aggregates
+their effects; it does not recreate left/right shock asymmetry or cross-weight.
+The existing front roll-balance setting determines the axle moment split.
+
+Equations: I*q_ddot = applied_contact_moment - K*q - C*q_dot;
+C=2*0.8*sqrt(K*I). Spring-plus-damper reaction determines transfer, replacing
+the old filters rather than adding a second transfer. Longitudinal contact
+force gives pitch excitation; lateral contact force gives roll excitation.
+Steady-state reactions recover the old contact-force transfer equilibrium.
+No aero pitch trim, heave, wheel travel, camber changes, bump stops, rollover,
+unsprung mass, or independent wheel-height excitation is included. Airborne
+states clear because these modes are constrained to a supported road plane.
+Existing floor snap and surface-step support remain for this first stage.
+
+Visuals
+
+Chassis meshes rotate about a provisional CG-height pivot. Wheels stay in the
+road-aligned visual frame; cockpit follows the chassis. This prevents artificial
+wheel sinking or lifting from rotating the entire car mesh. Suspension links
+are not articulated. Visual CG/axle geometry remains approximate.
+
+Test procedure
+
+Compare clean-air Indy runs at the same fuel, tyre condition, wings, gearing,
+roll balance, assists and inputs. Focus on entry braking, steering reversals,
+turn-in settling and exit recovery. Record with F11, or use automatic session
+telemetry. Road bumps and independent kerb response are outside this stage.
+Neither lap-time improvement nor ICR2 handling equivalence has been established.
+
+Verification
+
+validate_body_suspension.gd passes source values, modal equilibrium, dissipative
+damping, signs, axle conservation, nonnegative loads, airborne reset, and
+60/120 Hz coupled integration. The replay finishes at 52.800/52.781 m/s,
+roll approximately 0.007163 rad at both rates, pitch -0.002695/-0.002696 rad.
+validate_indy_suspension.gd passes real Indy scene activation, pit UI comparison,
+persistence, separate chassis/wheel transforms, cockpit, telemetry row alignment,
+reset, and exclusion from other tracks. Existing validate_tyre_loads.gd and
+validate_roll_setup.gd pass.
+
+First driven evaluation and roll-compliance correction
+
+Latest reviewed recording: practice_2026-10-10T12-54-22_9750.csv, Indianapolis,
+362.48 seconds / 21749 rows; dynamic roll/pitch active throughout.
+Above 250 km/h while grounded, absolute body roll had a 95th percentile of
+9.525 degrees and a maximum of 9.962 degrees. Absolute pitch peaked at
+0.649 degrees. The driver reported excessive visual roll.
+
+Profile v2 scales roll stiffness AND effective roll inertia by four relative
+to v1. Damping coefficient automatically scales by four as well. For the same
+contact-moment history this quarters angle and angular rate while preserving
+spring-plus-damper reaction, modal frequency, damping ratio and tyre transfer.
+This avoids simultaneously retuning the handling from the first driven laps.
+It projects the recorded high-speed peak from 9.962 to 2.491 degrees, relative
+to the road plane; this is a same-input projection, not a fresh driven result.
+Pitch settings and ICR2 reference shock values stay as before.
+
+The modal test checks this invariance over turn-in, reversal and release at
+fuel-adjusted mass. It passes, as do the coupled 60/120 Hz and Indy scene/UI
+checks. A further driven session should assess the reduced chassis/cockpit lean.
+
+Second driven evaluation
+
+Reviewed practice_2026-10-10T13-07-10_10775.csv: 253.38 seconds / 15203 rows.
+Sidecar confirms profile v2, effective roll K=208485.835 N*m/rad, I=1000 kg*m^2,
+and active dynamic body modes. The driver reports improved visual roll.
+High-speed grounded samples: roll p95=2.389 degrees and maximum=2.492 degrees,
+versus 9.525/9.962 previously. This agrees with the quarter-angle correction.
+After excluding pit/setup, off-tarmac and +/-2s around material wall impulses
+and resets, turning samples (speed >250 km/h, |yaw| >5 deg/s) have median roll
+2.243 degrees, p95=2.417, maximum=2.492. Pitch p95=0.402 degrees in those turns.
+
+Comparable turning sideslip p95 is 3.157 degrees versus 3.195 before; maximum
+3.526 versus 3.864. Roll reaction p95 is 8850.8 versus 8780.7 N*m; maximum
+9254.6 versus 9314.2. No unloaded wheel, rear post-peak sample, rear slip above
+12%, or sideslip excursion above 8 degrees appears in the filtered new samples.
+Minimum filtered high-speed FL load is 822.9 N; all four loads stay positive.
+Front tyres are post-peak for 10.37 of 95.45 filtered turning seconds (10.9%);
+the earlier run gives 9.70 of 93.47 seconds (10.4%). This suggests a modest
+front-limited balance remains, rather than a new rear stability problem.
+
+Four full laps confirmed through all six gates: 40.014, 39.813, 39.677, 39.511s.
+Only the 39.677s lap has no recorded wall impulse above 0.1 m/s; the other
+three each contain one. All four remain on tarmac without resets.
+Top speed is 381.644 km/h versus 372.544 before. The earlier timed laps use
+sixth gear 1.19; the new timed laps use 1.16. Wings remain 4.7/4.05 degrees,
+front roll share 50%, diff 30% drive/10% coast/20 N*m, stability and TC off,
+ABS on, and no tow. Fuel burns in both runs; an end-of-session reset restored
+35 gallons in the earlier recording, so start/end fuel alone is misleading.
+The gearing difference prevents attributing faster speed/laps to suspension.
+
+Evidence supports retaining v2 roll compliance for now. No additional physics
+or setup tuning was made during this analysis. Machine-readable comparison:
+tmp/icr2_analysis/indy_suspension_driven_comparison.json.
+
+Reproduction tools
+
+python tools/decode_icr2_suspension_setup.py PATH_TO_RACE_IND.STG
+python tools/analyse_icr2_suspension.py PATH_TO_INDYCAR.EXE
+Godot --headless --path . --script tools/validate_body_suspension.gd
+Godot --headless --path . --script tools/validate_indy_suspension.gd
+Run scene/UI checks with APPDATA pointing at an isolated workspace tmp directory.

@@ -1,5 +1,32 @@
 # Performance investigation
 
+## Indianapolis practice at 120 Hz (10 October)
+
+Reducing only verified level road collision strips removes 6,300 of Indy's
+32,192 road triangles while preserving all banked faces and the visual mesh.
+Two sequential Windows release comparisons measured 34.64–36.84 FPS with the
+original collider and 47.35–48.29 FPS with the reduced collider. The deployed
+20-car fixture uses a moving cockpit player, normal mirrors/shadows and VSync
+at 1920x1009. Physics remains 120 Hz. A 60 Hz diagnostic held 60 FPS, but was
+not adopted as a gameplay change. This optimization helps; it does not yet
+deliver stable 60 FPS at 120 Hz.
+
+Road support, bank/corner clearance and surface-step equivalence checks pass.
+Older Mile Oval contact fixtures fail identically with and without this Indy
+change. See [the full report](indy_practice_profile_2026_10_10.md) for controls,
+raw results, limitations and the repeatable exported-game benchmark.
+
+The [60/120/240 Hz player comparison](indy_physics_rate_comparison_2026_10_10.md)
+finds very close short corner-replay handling, but more accurate transient
+wheel loads at 120 Hz. The current default remains 120 Hz; global 60 Hz has
+not been accepted from these limited fixtures.
+
+The [full-lap/contact/AI follow-up](physics_rate_followup_2026_10_10.md) confirms
+that Indy fixed-input trajectories diverge over a lap even though pilots at
+both rates complete it with similar timings. Matched-timestep contact fixtures
+pass at 60/120/240 Hz. Instrumented AI contact movement and surface-step
+attempts dominate planner cost, making them the next optimization target.
+
 ## Mile Oval road collider (4 October)
 
 `content/tracks/mile_oval/surface/road_collision.gd` simplifies the imported road

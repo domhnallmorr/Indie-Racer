@@ -142,8 +142,20 @@ than treating an old test's top speed as a permanent specification.
 
 ## Current limitations
 
-There is no independent four-wheel suspension, lateral left/right load transfer,
-roll/pitch dynamics, detailed differential, tyre temperature or compound model.
+The Indianapolis human player has a sprung-body heave/roll/pitch prototype
+with four road contacts, spring/damper support, bump stops and droop limits.
+It is enabled initially and switchable while parked through **Edit Car Setup →
+Roll Balance**. Uncheck **Heave and wheel travel** to compare with the accepted
+roll/pitch-only model. See [the travel notes](indy_suspension_travel.txt) and
+[earlier Indy testing](indy_suspension_test.txt).
+
+Outside that Indy prototype, there is no heave or road-bump excitation. There is no
+unsprung-mass or articulated suspension-geometry model,
+detailed differential, tyre temperature or compound model. Four tyre loads
+include filtered lateral transfer; the default model resolves all four contact
+velocities and wheel speeds. The [rear differential](rear_differential.md) uses
+adjustable drive/coast clutch coupling and preload. Earlier handling variants
+and rear stagger have been retired.
 Tyre forces use a simple smooth combined-slip curve, not a calibrated Magic Formula
 fit. Tyre wear and fuel burn are distance models rather than thermal/combustion
 simulations. The idle helper prevents normal stalls; there is no clutch pedal.

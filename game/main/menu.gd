@@ -25,6 +25,11 @@ var selected_track_name := "Mile Oval"
 var options_wheel: CanvasLayer
 
 func _ready() -> void:
+	# Release templates reject scene-path overrides; expose the repeatable
+	# profiler only through an explicit diagnostic command-line argument.
+	if "--profile-indy" in OS.get_cmdline_user_args():
+		get_tree().change_scene_to_file.call_deferred("res://tools/profile_indy_practice.tscn")
+		return
 	options_wheel = preload("res://game/input/wheel_input.gd").new()
 	options_wheel.menu_mode = true
 	options_wheel.close_callback = _on_options_back_pressed

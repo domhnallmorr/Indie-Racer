@@ -2,6 +2,7 @@ extends RefCounted
 ## Dynamic single-track model. Body axes: u forward, v left, yaw positive left.
 ## Forces are integrated on the road plane. Collision/vertical support is external.
 var p: Dictionary
+var suspension = preload("res://game/vehicle/travel_suspension.gd").new()
 var vehicle_mass_kg := 0.0
 var vehicle_yaw_inertia_kgm2 := 0.0
 var u := 0.0
@@ -10,10 +11,19 @@ var yaw_rate := 0.0
 var steer := 0.0
 # Calibrated wheel input already describes an angle; only digital input needs slew.
 var direct_steering := false
-# Experimental contact geometry retains shared rear axle spin.
-# Default off so existing setups, AI users and replay validators keep their model.
-var experimental_wheel_motion := false
-var independent_front_rotation := false
+# Rear differential clutch coupling. Lock factors scale half the absolute
+# input torque; preload adds a bounded friction torque between the rear wheels.
+var rear_diff_drive_lock := .30
+var rear_diff_coast_lock := .10
+var rear_diff_preload_nm := 20.0
+const MAX_REAR_DIFF_PRELOAD_NM := 200.0
+var rear_left_omega := 0.0
+var rear_right_omega := 0.0
+var _independent_rear_active := false
+var rear_diff_capacity_nm := 0.0
+var rear_diff_drive_phase := false
+var rear_coupling_torque_nm := 0.0
+var rear_coupling_dissipation_j := 0.0
 var front_left_omega := 0.0
 var front_right_omega := 0.0
 var _independent_front_active := false
@@ -51,6 +61,12 @@ var wheel_loads := PackedFloat64Array([0.0,0.0,0.0,0.0])
 var wheel_peaks := PackedFloat64Array([0.0,0.0,0.0,0.0])
 var wheel_usage := PackedFloat64Array([0.0,0.0,0.0,0.0])
 var wheel_demand := PackedFloat64Array([0.0,0.0,0.0,0.0])
+var wheel_slip_ratios := PackedFloat64Array([0.0,0.0,0.0,0.0])
+var wheel_slip_angles := PackedFloat64Array([0.0,0.0,0.0,0.0])
+var wheel_forces := PackedVector2Array([Vector2.ZERO,Vector2.ZERO,Vector2.ZERO,Vector2.ZERO])
+var rear_track_yaw_moment_nm := 0.0
+var rear_left_yaw_moment_nm := 0.0
+var rear_right_yaw_moment_nm := 0.0
 var lateral_contact_acceleration := 0.0
 var front_lateral_transfer_n := 0.0
 var rear_lateral_transfer_n := 0.0
@@ -70,12 +86,17 @@ var wind_body_mps := Vector2.ZERO
 # Normal components of world-up rotation of each road-plane basis vector.
 # Set by the player from the contact normal; zero on a flat road.
 var turn_normal_factors := Vector2.ZERO
+var road_normal_acceleration := 0.0
 var banking_load_n := 0.0
 var heading_change := 0.0
 const RPM_TO_RAD := TAU/60.0
 const AUTO_REV_MATCH_RESPONSE_S := .04
 const INTEGRATION_SCHEME := "bounded_euler_v1"
 const MAX_INTEGRATION_STEP_S := .0005
+# Provisional ICR2 static-weight normalization from the recorded Indy run.
+# Apply to actual per-wheel load, never the doubled axle stiffness reference.
+const TYRE_NATIVE_LOAD_UNITS_PER_N := .469078
+const TYRE_ZERO_LOAD_EFFICIENCY := 64554.0
 
 func configure(parameters: Dictionary) -> void:
 	p = parameters
@@ -90,6 +111,7 @@ func set_vehicle_mass(total_mass_kg: float) -> void:
 	vehicle_yaw_inertia_kgm2 = p.yaw_inertia_kgm2*vehicle_mass_kg/p.mass_kg
 
 func reset() -> void:
+	suspension.reset()
 	u = 0
 	v = 0
 	yaw_rate = 0
@@ -105,6 +127,13 @@ func reset() -> void:
 	front_right_omega = 0
 	_independent_front_active = false
 	rear_omega = 0
+	rear_left_omega = 0
+	rear_right_omega = 0
+	_independent_rear_active = false
+	rear_diff_capacity_nm = 0
+	rear_diff_drive_phase = false
+	rear_coupling_torque_nm = 0
+	rear_coupling_dissipation_j = 0
 	engine_omega = p.idle_rpm*RPM_TO_RAD if engine_running else 0.0
 	throttle = 0
 	gear = 1
@@ -123,6 +152,12 @@ func reset() -> void:
 	wheel_peaks.fill(0.0)
 	wheel_usage.fill(0.0)
 	wheel_demand.fill(0.0)
+	wheel_slip_ratios.fill(0.0)
+	wheel_slip_angles.fill(0.0)
+	wheel_forces.fill(Vector2.ZERO)
+	rear_track_yaw_moment_nm = 0.0
+	rear_left_yaw_moment_nm = 0.0
+	rear_right_yaw_moment_nm = 0.0
 	heading_change = 0
 	front_usage = 0
 	rear_usage = 0
@@ -138,14 +173,49 @@ func reset() -> void:
 	airspeed_mps = 0.0
 	banking_load_n = 0.0
 	turn_normal_factors = Vector2.ZERO
+	road_normal_acceleration = 0.0
 
 func rpm() -> float:
 	return engine_omega/RPM_TO_RAD
 
 func handling_model_id() -> String:
-	if experimental_wheel_motion and independent_front_rotation:
-		return "wheel_contacts_free_front_v2"
-	return "wheel_contacts_experimental_v1" if experimental_wheel_motion else "axle_contacts_v1"
+	return "wheel_contacts_rear_differential_v1"
+
+func rear_differential_active() -> bool:
+	return true
+
+func set_rear_differential(drive_lock: float, coast_lock: float, preload_nm: float) -> bool:
+	if not is_finite(drive_lock) or not is_finite(coast_lock) or not is_finite(preload_nm):
+		return false
+	if drive_lock < 0 or drive_lock > 1 or coast_lock < 0 or coast_lock > 1 or preload_nm < 0 or preload_nm > MAX_REAR_DIFF_PRELOAD_NM:
+		return false
+	rear_diff_drive_lock = drive_lock
+	rear_diff_coast_lock = coast_lock
+	rear_diff_preload_nm = preload_nm
+	return true
+
+func _couple_rear_wheels(dt: float, drive_torque: float) -> void:
+	# Drive/coast follows mechanical power, including reverse and engine braking.
+	# Near zero speed, body motion/selected direction identifies the powered side.
+	var direction := rear_omega
+	if absf(direction) < .001: direction = u if absf(u) > .001 else (-1.0 if gear < 0 else 1.0)
+	rear_diff_drive_phase = drive_torque*direction > 0
+	var lock := rear_diff_drive_lock if rear_diff_drive_phase else rear_diff_coast_lock
+	rear_diff_capacity_nm = rear_diff_preload_nm+.5*absf(drive_torque)*lock
+	if dt <= 0:
+		rear_coupling_torque_nm = 0
+		rear_omega = (rear_left_omega+rear_right_omega)*.5
+		return
+	var inertia: float = p.rear_axle_inertia_kgm2*.5
+	var difference := rear_right_omega-rear_left_omega
+	# Bound the impulse by exact equalisation. Never overshoot or add spin energy.
+	rear_coupling_torque_nm = clampf(inertia*difference/(2.0*dt),-rear_diff_capacity_nm,rear_diff_capacity_nm)
+	var mean := (rear_left_omega+rear_right_omega)*.5
+	var remaining := difference-2.0*rear_coupling_torque_nm*dt/inertia
+	rear_left_omega = mean-remaining*.5
+	rear_right_omega = mean+remaining*.5
+	rear_omega = mean
+	rear_coupling_dissipation_j += maxf(0,inertia*.25*(difference*difference-remaining*remaining))
 
 func set_engine_running(value: bool) -> void:
 	engine_running = value
@@ -189,6 +259,7 @@ func advance(delta: float, gas: float, brake: float, steering_input: float,
 		gravity_forward: float = 0, gravity_left: float = 0, normal_gravity: float = 9.81,
 		grounded: bool = true, grip_scale: float = 1, speed_cap_mps: float = INF) -> void:
 	heading_change = 0
+	rear_coupling_dissipation_j = 0
 	if automatic and gear > 0 and shift_remaining == 0:
 		# Engine revs can remain high while the clutch reconnects after a shift.
 		# Require the current ratio's wheel-driven RPM too, or that rev flare
@@ -230,6 +301,12 @@ func steering_lock_at_speed(speed: float) -> float:
 
 func _integrate(dt: float, gas: float, brake: float, steering_input: float, gx: float, gy: float,
 		gn: float, grounded: bool, grip_scale: float, cap: float) -> void:
+	if not _independent_rear_active:
+		# Seed the wheel states from carrier speed on the first integration step.
+		rear_left_omega = rear_omega
+		rear_right_omega = rear_omega
+		_independent_rear_active = true
+	rear_omega = (rear_left_omega+rear_right_omega)*.5
 	var tow_target := clampf(slipstream_target,0.0,1.0)
 	var tow_time := Slipstream.BUILD_TIME_S if tow_target > slipstream_strength else Slipstream.RELEASE_TIME_S
 	slipstream_strength = lerpf(slipstream_strength,tow_target,1.0-exp(-dt/tow_time))
@@ -256,6 +333,10 @@ func _integrate(dt: float, gas: float, brake: float, steering_input: float, gx: 
 	# banked road. For a level, constant-bank turn this is v²/R * sin(bank).
 	# Use actual yaw, not requested steering, so steering alone cannot add load.
 	var turn_normal_accel := yaw_rate*Vector2(u,v).dot(turn_normal_factors) if grounded else 0.0
+	if suspension.travel_active():
+		# Body yaw is not trajectory curvature during a spin. The sampled
+		# world road normal supplies the moving-frame normal acceleration.
+		turn_normal_accel = road_normal_acceleration if grounded else 0.0
 	banking_load_n = vehicle_mass_kg*turn_normal_accel
 	var support_accel := maxf(0.0,gn+turn_normal_accel)
 	var tyre_lateral_accel: float = p.friction_coefficient*grip_scale*(support_accel+aero_load/vehicle_mass_kg)*p.corner_grip_fraction
@@ -313,10 +394,21 @@ func _integrate(dt: float, gas: float, brake: float, steering_input: float, gx: 
 	rear_downforce_n = rear_aero_load if grounded else 0.0
 	drag_n = .5*p.air_density_kg_m3*p.drag_area_m2*airspeed_mps*airspeed_mps*(1.0-slipstream_drag_reduction)
 	var weight: float = vehicle_mass_kg*support_accel if grounded else 0.0
-	load_transfer_n = clampf(vehicle_mass_kg*load_transfer_acceleration*p.cg_height_m/p.wheelbase_m,-weight*.35,weight*.35)
+	var pitch_moment: float = suspension.pitch_reaction_nm if suspension.enabled else vehicle_mass_kg*load_transfer_acceleration*p.cg_height_m
+	load_transfer_n = clampf(pitch_moment/p.wheelbase_m,-weight*.35,weight*.35) if grounded else 0.0
 	front_load = maxf(0,weight*p.front_weight_fraction+front_downforce_n-load_transfer_n)
 	rear_load = maxf(0,weight*(1-p.front_weight_fraction)+rear_downforce_n+load_transfer_n)
-	_update_wheel_loads()
+	if suspension.travel_active():
+		suspension.advance_travel(dt,vehicle_mass_kg,p,gn,support_accel,front_aero_load,rear_aero_load,
+			vehicle_mass_kg*lateral_contact_acceleration*p.cg_height_m,vehicle_mass_kg*load_transfer_acceleration*p.cg_height_m)
+		wheel_loads = suspension.loads.duplicate()
+		front_load = wheel_loads[0]+wheel_loads[1]
+		rear_load = wheel_loads[2]+wheel_loads[3]
+		load_transfer_n = suspension.pitch_reaction_nm/p.wheelbase_m
+		front_lateral_transfer_n = (wheel_loads[1]-wheel_loads[0])*.5
+		rear_lateral_transfer_n = (wheel_loads[3]-wheel_loads[2])*.5
+	else:
+		_update_wheel_loads()
 	var front_lateral := v+a*yaw_rate
 	var front_long := u*cos(steer)+front_lateral*sin(steer)
 	var front_side := front_lateral*cos(steer)-u*sin(steer)
@@ -326,84 +418,87 @@ func _integrate(dt: float, gas: float, brake: float, steering_input: float, gx: 
 	rear_slip_ratio = (rear_omega*p.rear_radius_m-u)/maxf(absf(u),p.slip_reference_speed_mps)
 	var front: Vector2
 	var rear: Vector2
+	rear_track_yaw_moment_nm = 0.0
 	var track_yaw_moment := 0.0
-	var free_front := experimental_wheel_motion and independent_front_rotation
-	if free_front != _independent_front_active:
-		# Preserve mean wheel speed when switching models while moving.
+	if not _independent_front_active:
+		# Seed the front wheel states from mean speed after reset.
 		front_left_omega = front_omega
 		front_right_omega = front_omega
-		_independent_front_active = free_front
+		_independent_front_active = true
 	var front_wheel_forces := Vector2.ZERO
 	var front_contact_speeds := Vector2.ZERO
-	if experimental_wheel_motion:
-		# Contact velocity = CG velocity + yaw cross wheel position. FL/RL are
-		# left of the CG; FR/RR are right. Cache steering trig for all front tyres.
-		var c := cos(steer)
-		var s := sin(steer)
-		var df: float = yaw_rate*p.front_track_m*.5
-		var dr: float = yaw_rate*p.rear_track_m*.5
-		var front_spin: float = front_omega*p.front_radius_m
-		var rear_spin: float = rear_omega*p.rear_radius_m
-		var rear_side := v-b*yaw_rate
-		var fl_long := front_long-df*c
-		var fr_long := front_long+df*c
-		var rl_long := u-dr
-		var rr_long := u+dr
-		var fl_reference: float = maxf(absf(fl_long),p.slip_reference_speed_mps)
-		var fr_reference: float = maxf(absf(fr_long),p.slip_reference_speed_mps)
-		var rl_reference: float = maxf(absf(rl_long),p.slip_reference_speed_mps)
-		var rr_reference: float = maxf(absf(rr_long),p.slip_reference_speed_mps)
-		var fl_spin: float = front_left_omega*p.front_radius_m if free_front else front_spin
-		var fr_spin: float = front_right_omega*p.front_radius_m if free_front else front_spin
-		var fl := _wheel_force(0,(fl_spin-fl_long)/fl_reference,atan2(front_side+df*s,fl_reference),p.front_cornering_stiffness_n_rad,grip_scale)
-		var fr := _wheel_force(1,(fr_spin-fr_long)/fr_reference,atan2(front_side-df*s,fr_reference),p.front_cornering_stiffness_n_rad,grip_scale)
-		front_wheel_forces = Vector2(fl.x,fr.x)
-		front_contact_speeds = Vector2(fl_long,fr_long)
-		var rl := _wheel_force(2,(rear_spin-rl_long)/rl_reference,atan2(rear_side,rl_reference),p.rear_cornering_stiffness_n_rad,grip_scale)
-		var rr := _wheel_force(3,(rear_spin-rr_long)/rr_reference,atan2(rear_side,rr_reference),p.rear_cornering_stiffness_n_rad,grip_scale)
-		front = fl+fr
-		rear = rl+rr
-		# Sum -y*Fx in body coordinates alongside the axle x*Fy moments below.
-		track_yaw_moment = p.front_track_m*.5*((fr.x-fl.x)*c-(fr.y-fl.y)*s)+p.rear_track_m*.5*(rr.x-rl.x)
-	else:
-		front = _wheel_force(0,front_slip_ratio,front_slip_angle,p.front_cornering_stiffness_n_rad,grip_scale)+_wheel_force(1,front_slip_ratio,front_slip_angle,p.front_cornering_stiffness_n_rad,grip_scale)
-		rear = _wheel_force(2,rear_slip_ratio,rear_slip_angle,p.rear_cornering_stiffness_n_rad,grip_scale)+_wheel_force(3,rear_slip_ratio,rear_slip_angle,p.rear_cornering_stiffness_n_rad,grip_scale)
+	# Contact velocity = CG velocity + yaw cross wheel position. FL/RL are
+	# left of the CG; FR/RR are right. Cache steering trig for all front tyres.
+	var c := cos(steer)
+	var s := sin(steer)
+	var df: float = yaw_rate*p.front_track_m*.5
+	var dr: float = yaw_rate*p.rear_track_m*.5
+	var rear_side := v-b*yaw_rate
+	var fl_long := front_long-df*c
+	var fr_long := front_long+df*c
+	var rl_long := u-dr
+	var rr_long := u+dr
+	var fl_reference: float = maxf(absf(fl_long),p.slip_reference_speed_mps)
+	var fr_reference: float = maxf(absf(fr_long),p.slip_reference_speed_mps)
+	var rl_reference: float = maxf(absf(rl_long),p.slip_reference_speed_mps)
+	var rr_reference: float = maxf(absf(rr_long),p.slip_reference_speed_mps)
+	var fl_spin: float = front_left_omega*p.front_radius_m
+	var fr_spin: float = front_right_omega*p.front_radius_m
+	var fl := _wheel_force(0,(fl_spin-fl_long)/fl_reference,atan2(front_side+df*s,fl_reference),p.front_cornering_stiffness_n_rad,grip_scale)
+	var fr := _wheel_force(1,(fr_spin-fr_long)/fr_reference,atan2(front_side-df*s,fr_reference),p.front_cornering_stiffness_n_rad,grip_scale)
+	front_wheel_forces = Vector2(fl.x,fr.x)
+	front_contact_speeds = Vector2(fl_long,fr_long)
+	var rl_spin: float = rear_left_omega*p.rear_radius_m
+	var rr_spin: float = rear_right_omega*p.rear_radius_m
+	var rl := _wheel_force(2,(rl_spin-rl_long)/rl_reference,atan2(rear_side,rl_reference),p.rear_cornering_stiffness_n_rad,grip_scale)
+	var rr := _wheel_force(3,(rr_spin-rr_long)/rr_reference,atan2(rear_side,rr_reference),p.rear_cornering_stiffness_n_rad,grip_scale)
+	front = fl+fr
+	rear = rl+rr
+	rear_track_yaw_moment_nm = p.rear_track_m*.5*(rr.x-rl.x)
+	# Sum -y*Fx in body coordinates alongside the axle x*Fy moments below.
+	track_yaw_moment = p.front_track_m*.5*((fr.x-fl.x)*c-(fr.y-fl.y)*s)+p.rear_track_m*.5*(rr.x-rl.x)
+	rear_left_yaw_moment_nm = -b*wheel_forces[2].y-(p.rear_track_m*.5*wheel_forces[2].x)
+	rear_right_yaw_moment_nm = -b*wheel_forces[3].y+(p.rear_track_m*.5*wheel_forces[3].x)
 	front_usage = front.length()/maxf(wheel_peaks[0]+wheel_peaks[1],.001)
 	rear_usage = rear.length()/maxf(wheel_peaks[2]+wheel_peaks[3],.001)
 	var front_brake: float = brake*p.brake_force_n*p.front_brake_bias*p.front_radius_m
 	var rear_brake: float = brake*p.brake_force_n*(1-p.front_brake_bias)*p.rear_radius_m
-	if free_front:
-		# Each free wheel carries half the authored axle inertia and brake torque.
-		var wheel_inertia: float = p.front_axle_inertia_kgm2*.5
-		front_left_omega = move_toward(front_left_omega-front_wheel_forces.x*p.front_radius_m/wheel_inertia*dt,0,front_brake*.5/wheel_inertia*dt)
-		front_right_omega = move_toward(front_right_omega-front_wheel_forces.y*p.front_radius_m/wheel_inertia*dt,0,front_brake*.5/wheel_inertia*dt)
-		front_omega = (front_left_omega+front_right_omega)*.5
-	else:
-		front_omega = move_toward(front_omega-front.x*p.front_radius_m/p.front_axle_inertia_kgm2*dt,0,front_brake/p.front_axle_inertia_kgm2*dt)
-	rear_omega = move_toward(rear_omega+(drive_torque-rear.x*p.rear_radius_m)/p.rear_axle_inertia_kgm2*dt,0,rear_brake/p.rear_axle_inertia_kgm2*dt)
+	# Each free wheel carries half the authored axle inertia and brake torque.
+	var wheel_inertia: float = p.front_axle_inertia_kgm2*.5
+	front_left_omega = move_toward(front_left_omega-front_wheel_forces.x*p.front_radius_m/wheel_inertia*dt,0,front_brake*.5/wheel_inertia*dt)
+	front_right_omega = move_toward(front_right_omega-front_wheel_forces.y*p.front_radius_m/wheel_inertia*dt,0,front_brake*.5/wheel_inertia*dt)
+	front_omega = (front_left_omega+front_right_omega)*.5
+	var inertia: float = p.rear_axle_inertia_kgm2*.5
+	rear_left_omega = move_toward(rear_left_omega+(drive_torque*.5-wheel_forces[2].x*p.rear_radius_m)/inertia*dt,0,rear_brake*.5/inertia*dt)
+	rear_right_omega = move_toward(rear_right_omega+(drive_torque*.5-wheel_forces[3].x*p.rear_radius_m)/inertia*dt,0,rear_brake*.5/inertia*dt)
+	_couple_rear_wheels(dt,drive_torque)
 	# Accessibility assists deliberately intervene beyond the physical tyre model.
 	# Limit driven wheelspin and prevent braking lock-up; also work in reverse.
 	if assist > 0:
 		if traction > 0 and gas > 0 and gear != 0:
 			var direction_sign := -1.0 if gear < 0 else 1.0
-			var allowed: float = (maxf(0,u*direction_sign)+p.traction_slip_limit*maxf(absf(u),p.slip_reference_speed_mps))/p.rear_radius_m
-			if rear_omega*direction_sign > allowed:
-				rear_omega = lerpf(rear_omega,allowed*direction_sign,traction)
+			var contact := Vector2(u-yaw_rate*p.rear_track_m*.5,u+yaw_rate*p.rear_track_m*.5)
+			var left_allowed: float = (maxf(0,contact.x*direction_sign)+p.traction_slip_limit*maxf(absf(contact.x),p.slip_reference_speed_mps))/p.rear_radius_m
+			var right_allowed: float = (maxf(0,contact.y*direction_sign)+p.traction_slip_limit*maxf(absf(contact.y),p.slip_reference_speed_mps))/p.rear_radius_m
+			if rear_left_omega*direction_sign > left_allowed:
+				rear_left_omega = lerpf(rear_left_omega,left_allowed*direction_sign,traction)
+			if rear_right_omega*direction_sign > right_allowed:
+				rear_right_omega = lerpf(rear_right_omega,right_allowed*direction_sign,traction)
 		if abs_assist > 0 and brake > 0 and absf(u) > 1:
-			var front_min: float = front_long*(1-p.braking_slip_limit)/p.front_radius_m
-			var rear_min: float = u*(1-p.braking_slip_limit)/p.rear_radius_m
-			if free_front:
-				var left_min: float = front_contact_speeds.x*(1-p.braking_slip_limit)/p.front_radius_m
-				var right_min: float = front_contact_speeds.y*(1-p.braking_slip_limit)/p.front_radius_m
-				if absf(front_left_omega) < absf(left_min):
-					front_left_omega = lerpf(front_left_omega,left_min,abs_assist)
-				if absf(front_right_omega) < absf(right_min):
-					front_right_omega = lerpf(front_right_omega,right_min,abs_assist)
-				front_omega = (front_left_omega+front_right_omega)*.5
-			elif absf(front_omega) < absf(front_min):
-				front_omega = lerpf(front_omega,front_min,abs_assist)
-			if absf(rear_omega) < absf(rear_min):
-				rear_omega = lerpf(rear_omega,rear_min,abs_assist)
+			var left_min: float = front_contact_speeds.x*(1-p.braking_slip_limit)/p.front_radius_m
+			var right_min: float = front_contact_speeds.y*(1-p.braking_slip_limit)/p.front_radius_m
+			if absf(front_left_omega) < absf(left_min):
+				front_left_omega = lerpf(front_left_omega,left_min,abs_assist)
+			if absf(front_right_omega) < absf(right_min):
+				front_right_omega = lerpf(front_right_omega,right_min,abs_assist)
+			front_omega = (front_left_omega+front_right_omega)*.5
+			var rear_left_min: float = (u-yaw_rate*p.rear_track_m*.5)*(1-p.braking_slip_limit)/p.rear_radius_m
+			var rear_right_min: float = (u+yaw_rate*p.rear_track_m*.5)*(1-p.braking_slip_limit)/p.rear_radius_m
+			if absf(rear_left_omega) < absf(rear_left_min):
+				rear_left_omega = lerpf(rear_left_omega,rear_left_min,abs_assist)
+			if absf(rear_right_omega) < absf(rear_right_min):
+				rear_right_omega = lerpf(rear_right_omega,rear_right_min,abs_assist)
+	rear_omega = (rear_left_omega+rear_right_omega)*.5
 	var front_x := front.x*cos(steer)-front.y*sin(steer)
 	var front_y := front.x*sin(steer)+front.y*cos(steer)
 	var rolling: float = p.rolling_resistance*(front_load+rear_load)
@@ -432,11 +527,13 @@ func _integrate(dt: float, gas: float, brake: float, steering_input: float, gx: 
 	# Engine braking, service braking and rolling resistance still unload the rear;
 	# deceleration from aerodynamic drag or a road gradient does not do so by itself.
 	var contact_accel: float = (front_x+rear.x-rolling_force.x)/vehicle_mass_kg
-	load_transfer_acceleration = lerpf(load_transfer_acceleration,contact_accel,minf(1,dt*12))
+	load_transfer_acceleration = contact_accel if suspension.enabled else lerpf(load_transfer_acceleration,contact_accel,minf(1,dt*12))
 	# Tyre/contact force supplies roll moment about the road plane. Gravity and
 	# CG-applied aero do not: bank gravity already reduces the tyre force needed.
 	var lateral_contact: float = (front_y+rear.y-rolling_force.y)/vehicle_mass_kg
-	lateral_contact_acceleration = lerpf(lateral_contact_acceleration,lateral_contact,1.0-exp(-dt/p.roll_transfer_response_s)) if grounded else 0.0
+	lateral_contact_acceleration = (lateral_contact if suspension.enabled else lerpf(lateral_contact_acceleration,lateral_contact,1.0-exp(-dt/p.roll_transfer_response_s))) if grounded else 0.0
+	if not suspension.travel_active():
+		suspension.advance(dt,vehicle_mass_kg*lateral_contact*p.cg_height_m,vehicle_mass_kg*contact_accel*p.cg_height_m,vehicle_mass_kg/p.mass_kg,grounded)
 	# Static low-speed settling avoids creep from the axle slip regularisation.
 	if grounded and speed < .12 and gas == 0 and (brake > .05 or absf(gx)+absf(gy) < .05):
 		u = 0
@@ -446,6 +543,8 @@ func _integrate(dt: float, gas: float, brake: float, steering_input: float, gx: 
 		front_left_omega = 0
 		front_right_omega = 0
 		rear_omega = 0
+		rear_left_omega = 0
+		rear_right_omega = 0
 	var hard_cap: float = minf(cap,p.reverse_limit_kph/3.6) if gear == -1 else cap
 	var planar_speed := Vector2(u,v).length()
 	if planar_speed > hard_cap:
@@ -454,8 +553,9 @@ func _integrate(dt: float, gas: float, brake: float, steering_input: float, gx: 
 
 func _update_wheel_loads() -> void:
 	# Positive leftward contact force transfers load to the right tyres.
-	# This quasi-static roll model has no suspension travel or rollover dynamics.
-	var moment: float = vehicle_mass_kg*lateral_contact_acceleration*p.cg_height_m
+	# Dynamic body reaction replaces the filtered moment in the Indy prototype.
+	# Both paths retain axle-load clipping; neither solves wheel travel/rollover.
+	var moment: float = suspension.roll_reaction_nm if suspension.enabled else vehicle_mass_kg*lateral_contact_acceleration*p.cg_height_m
 	front_lateral_transfer_n = clampf(moment*p.front_roll_stiffness_fraction/p.front_track_m,-front_load*.5,front_load*.5)
 	rear_lateral_transfer_n = clampf(moment*(1.0-p.front_roll_stiffness_fraction)/p.rear_track_m,-rear_load*.5,rear_load*.5)
 	wheel_loads[0] = front_load*.5-front_lateral_transfer_n
@@ -463,17 +563,24 @@ func _update_wheel_loads() -> void:
 	wheel_loads[2] = rear_load*.5-rear_lateral_transfer_n
 	wheel_loads[3] = rear_load*.5+rear_lateral_transfer_n
 
-func _peak_force(load_n: float, grip: float) -> float:
-	# Bound the friction coefficient near zero load while keeping force continuous.
-	var load_ratio: float = maxf(load_n/p.reference_load_n,.1)
-	return maxf(0,load_n)*p.friction_coefficient*maxf(0,grip)*pow(load_ratio,p.load_grip_exponent-1.0)
+func _peak_force(load_n: float, grip: float, index: int = 0) -> float:
+	# This helper still returns an axle-reference force, halved by _wheel_force.
+	# Smooth arithmetic avoids the original game's integer steps near wheel lift.
+	var native_load: float = maxf(0,load_n)*.5*TYRE_NATIVE_LOAD_UNITS_PER_N
+	if index < 2:
+		native_load *= 1.1
+	var efficiency: float = maxf(5000.0,64554.0-2.95*native_load-.0004915*native_load*native_load)
+	return maxf(0,load_n)*p.friction_coefficient*maxf(0,grip)*efficiency/TYRE_ZERO_LOAD_EFFICIENCY
 
 func _wheel_force(index: int, slip: float, angle: float, axle_stiffness: float, grip: float) -> Vector2:
 	# Twice the individual load uses the existing axle reference; half the force
 	# preserves the original stiffness/force at equal loads when exponent = 1.
 	var equivalent_load := 2.0*wheel_loads[index]
-	var force := .5*_tyre(equivalent_load,slip,angle,axle_stiffness,grip)
-	var peak := .5*_peak_force(equivalent_load,grip)
+	var force := .5*_tyre(equivalent_load,slip,angle,axle_stiffness,grip,index)
+	wheel_slip_ratios[index] = slip
+	wheel_slip_angles[index] = angle
+	wheel_forces[index] = force
+	var peak := .5*_peak_force(equivalent_load,grip,index)
 	wheel_peaks[index] = peak
 	wheel_usage[index] = force.length()/maxf(peak,.001)
 	var raw := .5*pow(equivalent_load/p.reference_load_n,p.load_stiffness_exponent)*Vector2(p.longitudinal_stiffness_n*slip,-axle_stiffness*angle)
@@ -481,7 +588,7 @@ func _wheel_force(index: int, slip: float, angle: float, axle_stiffness: float, 
 	wheel_demand[index] = raw.length()/maxf(peak*PI/2.0,.001) if peak > 0 else 0.0
 	return force
 
-func _tyre(load_n: float, slip: float, angle: float, stiffness: float, grip: float) -> Vector2:
+func _tyre(load_n: float, slip: float, angle: float, stiffness: float, grip: float, index: int = 0) -> Vector2:
 	if load_n <= 0 or grip <= 0:
 		return Vector2.ZERO
 	var load_scale: float = pow(load_n/p.reference_load_n,p.load_stiffness_exponent)
@@ -489,7 +596,7 @@ func _tyre(load_n: float, slip: float, angle: float, stiffness: float, grip: flo
 	var demand := force.length()
 	if demand < .000001:
 		return Vector2.ZERO
-	var peak := _peak_force(load_n,grip)
+	var peak := _peak_force(load_n,grip,index)
 	var normalized := demand/peak
 	# Preserve small-slip stiffness, with a smooth peak at normalized demand PI/2.
 	# Both components share this envelope, so wheelspin/braking uses cornering grip.

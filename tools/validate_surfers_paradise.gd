@@ -13,6 +13,11 @@ func validate() -> void:
 	var race_mode := "--race" in OS.get_cmdline_user_args()
 	var full_field := "--field" in OS.get_cmdline_user_args()
 	var immediate_green := "--green" in OS.get_cmdline_user_args()
+	var baseline := "--baseline" in OS.get_cmdline_user_args()
+	var seconds := 660 if race_mode and not immediate_green else 420
+	for arg in OS.get_cmdline_user_args():
+		if arg.begins_with("--seconds="):
+			seconds = maxi(120,int(arg.trim_prefix("--seconds=")))
 	root.set_meta("roster_selection",{"track_id":"surfers_paradise","file":"res://content/rosters/irl_2001/manifest.json" if full_field else "res://content/rosters/icr2_test/manifest.json","seed":42,"session_mode":"race" if race_mode else "practice","incident_mode":"off","race_laps":10,"ai_telemetry":false})
 	var main = load("res://game/main/main.tscn").instantiate()
 	root.add_child(main)
@@ -31,6 +36,21 @@ func validate() -> void:
 			driver.release_delay = main.ai_cars.find(car)*8.0
 		if not driver.profile_ready or not driver.racecraft.enabled or not driver.racecraft.physical_corridor_width:
 			failures.append("Invalid driver/corridor "+str(car.name))
+		if baseline and not driver.tactical_speeds.is_empty():
+			# Compare the same traffic fixture against the previous conservative
+			# speed plan, preserving relative roster pace and fuel calibration.
+			var old_lap := 0.0
+			for i in range(driver.race.size()-1):
+				old_lap += 2.0*driver.race[i].distance_to(driver.race[i+1])/(driver.tactical_speeds[i]+driver.tactical_speeds[i+1])
+			driver.base_lap_target_s *= old_lap/driver.reference_lap_s
+			driver.reference_lap_s = old_lap
+			driver.reference_speeds = driver.tactical_speeds.duplicate()
+			driver.reference_min_speed = INF
+			driver.reference_peak_speed = 0.0
+			for speed in driver.reference_speeds:
+				driver.reference_min_speed = minf(driver.reference_min_speed,speed)
+				driver.reference_peak_speed = maxf(driver.reference_peak_speed,speed)
+			driver._cache_tow_profile()
 	if not failures.is_empty():
 		print("SURFERS FAIL ",failures)
 		main.free()
@@ -49,7 +69,7 @@ func validate() -> void:
 	var max_error := 0.0
 	var wall_ticks := 0
 	var reported_error := 0.0
-	for tick in range(60*(660 if race_mode and not immediate_green else 420)):
+	for tick in range(60*seconds):
 		await physics_frame
 		for car in main.ai_cars:
 			var driver = car.get_node("Driver")

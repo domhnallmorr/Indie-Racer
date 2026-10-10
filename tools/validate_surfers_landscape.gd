@@ -21,7 +21,7 @@ func validate() -> void:
 	var data: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://content/tracks/surfers_paradise/geometry.json"))
 	var space := root.world_3d.direct_space_state
 	var excludes: Array[RID] = [main.player.get_rid()]
-	check(data.patches.size()==4,"Two first-chicane and two backstraight grass islands")
+	check(data.patches.size()==6,"Chicane islands and final-turn verge")
 	for patch in data.patches:
 		var n: int = patch.points.size()/2
 		for index in [n/3,n/2,n*2/3]:
@@ -34,7 +34,7 @@ func validate() -> void:
 			check(is_equal_approx(main.player._surface_grip(),main.player.parameters.values.grass_grip_multiplier),"Grass invokes existing reduced grip")
 	var kerbs := 0
 	for strip in data.strips:
-		if strip.name in ["T1Kerb","BackstraightKerb"]:
+		if strip.name in ["T1Kerb","BackstraightKerb","FinalTurnKerb","SecondChicaneKerb"]:
 			kerbs += 1
 			if kerbs%10!=0: continue
 			var at: Vector3 = (v(strip.rows[0][1])+v(strip.rows[1][2]))*.5
@@ -46,31 +46,34 @@ func validate() -> void:
 			check(is_equal_approx(main.player._surface_grip(),1.0),"Kerb retains tarmac grip")
 		if strip.name in ["BeachWall","CityWall"]:
 			# Probe the displaced wall halfway through the revised street envelope.
-			for index in [220,1440,1475,1520]:
+			for index in [220,330,345,360,1440,1475,1520,1940,1965,1990]:
 				var row: Array = strip.rows[index if strip.name=="BeachWall" else index-165]
 				var at := track.to_global(v(row[0])+Vector3.UP*.5)
-				var hit := space.intersect_ray(PhysicsRayQueryParameters3D.create(at-Vector3(0,0,2),at+Vector3(0,0,2),1,excludes))
+				var normal := (v(row[1])-v(row[0])).normalized()
+				var hit := space.intersect_ray(PhysicsRayQueryParameters3D.create(at-normal*2,at+normal*2,1,excludes))
 				check(not hit.is_empty() and str(hit.collider.get_parent().name).begins_with(strip.name),"Moved barrier retains collision: "+str(strip.name))
 	check(kerbs>350,"Broad striped kerbs generated in both complexes")
-	for patch_index in [0,2]:
+	for patch_index in [0,2,4,5]:
 		await check_crossing(main,track,data,patch_index)
 	for failure in failures: push_error(failure)
-	print("SURFERS LANDSCAPE ","PASS: grass collision/grip, physical kerb crossing and moved barrier collision in both chicanes" if failures.is_empty() else failures)
+	print("SURFERS LANDSCAPE ","PASS: grass collision/grip, physical kerb crossing and moved barrier collision in all landscaped corners" if failures.is_empty() else failures)
 	main.free()
 	quit(0 if failures.is_empty() else 1)
 
 func check_crossing(main: Node, track: Node3D, data: Dictionary, patch_index: int) -> void:
 	# Cross a real kerb from asphalt onto grass with the player's physics model.
 	var kerb: Dictionary = {}
-	var kerb_name := "T1Kerb" if patch_index==0 else "BackstraightKerb"
+	var kerb_name := str(data.patches[patch_index].name).trim_prefix("Ground").trim_suffix("GrassIsland")+"Kerb"
+	var sample := 95 if patch_index==4 else 55
 	for strip in data.strips:
-		if strip.name==kerb_name and v(strip.rows[0][0]).distance_to(v(data.patches[patch_index].points[55]))<4:
+		if strip.name==kerb_name and minf(v(strip.rows[0][0]).distance_to(v(data.patches[patch_index].points[sample])),v(strip.rows[0][-1]).distance_to(v(data.patches[patch_index].points[sample])))<4:
 			kerb = strip
 			break
 	check(not kerb.is_empty(),"Find representative apex kerb")
 	if not kerb.is_empty():
-		var inside := v(kerb.rows[0][0])
-		var outward := (v(kerb.rows[0][-1])-inside).normalized()
+		var side_zero := patch_index==5
+		var inside := v(kerb.rows[0][-1 if side_zero else 0])
+		var outward := (v(kerb.rows[0][0 if side_zero else -1])-inside).normalized()
 		outward.y = 0
 		outward = outward.normalized()
 		main.player.global_position = track.to_global(inside-outward*1.0+Vector3.UP*.08)

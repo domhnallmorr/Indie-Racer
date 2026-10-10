@@ -1,9 +1,18 @@
 # Tyre loads and roll balance
 
-The player now evaluates left/right tyre loads and forces while retaining the
-existing front/rear axle slip and wheel-speed model. Steering remains independent
-of grip, wings and yaw. This is a load-resolution step, not a full suspension or
-four independent wheel-speed simulation.
+The player evaluates left/right tyre loads, contact velocities, forces and
+individual wheel speeds. Steering remains independent of grip, wings and yaw.
+The [rear differential](rear_differential.md) uses a simplified bounded clutch.
+Suspension travel is available in the Indianapolis human-player prototype.
+Earlier handling variants have been retired.
+
+At Indianapolis, **Dynamic suspension** uses body reaction forces instead of the
+transfer filters described below. With **Heave and wheel travel** enabled,
+four road contacts supply the tyre loads directly through spring/damper forces.
+Uncheck travel in **Edit Car Setup → Roll Balance** to compare with the accepted
+roll/pitch-only stage, or disable dynamic suspension for the original filters.
+F5 adds body angles and corner travel. See [travel notes](indy_suspension_travel.txt)
+and [earlier Indy test results](indy_suspension_test.txt).
 
 ## Driving and setup
 
@@ -37,14 +46,22 @@ leftward tyre force moves load to the right tyres. Axle totals are conserved and
 wheel loads cannot become negative.
 
 Each side evaluates half of the axle-reference tyre curve at twice its individual
-load. This preserves axle stiffness calibration. Peak force uses a mild 0.98 load
-exponent; cornering stiffness retains its separate 0.85 exponent. Unequal loads
-therefore reduce combined capacity. At equal loads and peak exponent 1, the
-summed curve exactly matches the old axle curve.
+load. This preserves axle stiffness calibration. Peak capacity now uses the
+proposed ICR2 load-efficiency polynomial on the actual individual load, with
+0.469078 native load units per newton and a 1.1 front-pair adjustment. Zero-load
+friction is 1.749509, from the baseline compound factor 58200. This conversion
+is provisional, matched to the static weight in the Indy recording. Smooth
+arithmetic avoids the original integer steps near wheel lift. Cornering stiffness
+retains its separate 0.85 exponent, and post-slide force retains its 85% floor.
+The curve substantially reduces capacity on heavily loaded outside tyres.
+See [the proposed curves](plots/proposed_tyre_load_dropoff.png) and
+[binary investigation](icr2_tyre_binary_review.txt) for the calibration basis.
 
-Parameters are provisional. Both wheels on an axle share slip and angular speed;
-there is no differential, per-wheel contact velocity, suspension travel, camber,
-roll-centre geometry, or separate surface sampling. Wheel-lift clipping does not
+Parameters are provisional. Each wheel has its own contact velocity and
+rotational speed. The rear differential couples rear rotational states through
+a bounded friction clutch. There is no suspension travel, camber, roll-centre
+geometry, or separate
+physical surface sampling. Wheel-lift clipping does not
 model rollover or redistribute excess roll moment. The existing yaw-based bank
 support approximation remains. Tyre condition is still one value for the car.
 
@@ -56,10 +73,18 @@ support approximation remains. Tyre condition is still one value for the car.
   force limits, load sensitivity, roll balance, bank gravity and reset.
 - [Setup/display tests](../tools/validate_roll_setup.gd): pit controls, per-track
   persistence, invalid data, restrictions, unchanged steering and F5 diagnostics.
-- [Lift tests](../tools/validate_lift_off.gd) retain their previous bounds and
-  compare 60/120 Hz; steering, oversteer recovery and player-adapter tests remain.
+- [Lift tests](../tools/validate_lift_off.gd) compare 60/120 Hz. With this load
+  curve, the historical Texas entry/exit/late steering replays exceed their
+  old slide bounds. Their peak sideslip is approximately 65/56/18 degrees;
+  the previous grip curve gives about 3/8/3 degrees (the old exit case already
+  exceeds its bound). Both frame rates agree. These are unchanged-input replays,
+  not fresh driving laps; this trial needs track testing before further tuning.
+  Tyre loads, oversteer recovery, gearbox, rear differential and player-adapter
+  validations pass. The legacy slide bounds have not been relaxed.
 
 Telemetry adds load, peak capacity, usage and normalized demand for each corner,
 plus current front roll stiffness, filtered lateral contact acceleration and
 front/rear transferred load. Demand 1 is the force peak; values above 1 are
 post-peak. See [equations](player_physics_model.md) for details.
+The sidecar configuration now records `tyre_load_curve` and its provisional
+normalization so recordings can distinguish this trial from the earlier curve.

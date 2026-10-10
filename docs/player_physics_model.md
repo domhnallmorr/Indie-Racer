@@ -2,14 +2,14 @@
 
 [Back to the overview](player_physics.md). Checked against
 [bicycle_model.gd](../game/vehicle/bicycle_model.gd) and
-[player_bicycle.gd](../game/vehicle/player_bicycle.gd) on 6 October 2026.
+[player_bicycle.gd](../game/vehicle/player_bicycle.gd) on 10 October 2026.
 Equations below describe this implementation, including its approximations.
 
 ## Coordinates and state
 
 The body frame uses `u` forward and `v` left, in m/s. Positive yaw rate `r`
 turns left, in rad/s. Steering `delta` is in radians internally. The model also
-stores front/rear axle angular speeds, engine angular speed, throttle, clutch,
+stores individual wheel angular speeds and front/rear mean speeds, engine angular speed, throttle, clutch,
 gear and filtered longitudinal/contact-force accelerations. Configuration angles use degrees;
 engine configuration uses RPM, converted with `omega = RPM * 2*pi/60`.
 
@@ -50,7 +50,9 @@ cornering stiffness `C`, longitudinal stiffness `K`, and grip multiplier `g`:
 ```text
 load_scale = (Fz/reference_load)^load_stiffness_exponent
 raw_force = (K*load_scale*kappa, -C*load_scale*alpha)
-peak = Fz*friction_coefficient*g * max(Fz/reference_load, 0.1)^(load_grip_exponent-1)
+L = 0.5*Fz*0.469078 * (1.1 if front else 1.0)
+E = max(5000, 64554 - 2.95*L - 0.0004915*L^2)
+peak = Fz*friction_coefficient*g * E/64554
 q = length(raw_force)/peak
 envelope = sin(q)                                     # q <= pi/2
 envelope = sliding + (1-sliding)*exp(-((q-pi/2)/width)^2) # q > pi/2
@@ -59,16 +61,26 @@ force = normalized(raw_force) * peak * envelope
 
 For each wheel, evaluate this helper with `Fz = 2*wheel_load`, then halve
 its force. This preserves the authored per-axle stiffness/reference load while
-resolving each side independently. Left and right still share axle slip angles,
-slip ratios and angular speed; there is no differential or individual contact
-velocity model yet. Sum the two wheel forces to obtain the axle force used in
-body and wheel-speed integration.
+resolving each side independently. The default model uses individual contact
+velocities `u_i = u - r*y_i`, `v_i = v + r*x_i`, rotated into the steered front
+tyre frame. Each wheel has its own rotational speed and half its axle's authored
+inertia and brake torque. Sum wheel forces for body integration, including each
+wheel's `x_i*Fy_i-y_i*Fx_i` yaw moment. The [rear differential](rear_differential.md)
+uses a bounded clutch with drive/coast torque factors and preload. The engine
+couples to the rear mean speed, and rear ABS/TC acts per wheel. This remains a
+simplified physical hypothesis with unverified ICR2 behaviour. Individual
+slip/force telemetry records the evaluated tyre states; axle fields remain
+central summaries. Earlier handling variants and rear stagger have been retired.
 
-`load_grip_exponent` is 0.98: peak force grows sublinearly with load above 10%
-of reference load. Below that threshold the friction coefficient is held constant
-to avoid divergence near wheel lift. At exponent 1 and equal side loads, summed
-wheel forces exactly recover the previous axle tyre curve. The existing 0.85
-stiffness exponent is separate from this new peak-force exponent.
+The load-efficiency polynomial replaces the previous 0.98 peak-force exponent.
+`friction_coefficient` is now zero-load friction, 1.7495093867, obtained from
+the recovered baseline compound factor 58200. The native load normalization
+is provisional and matches static weight in the recorded Indy run. The front
+pair evaluates efficiency at 1.1 times the native load. Stiffness retains its
+separate 0.85 exponent. Only peak capacity uses this new curve; the existing
+combined-slip envelope and post-slide floor remain. At very high loads the
+polynomial can produce decreasing total capacity before reaching its floor;
+this is an experimental recovered curve, not a measured physical tyre fit.
 
 Zero load, zero grip or zero demand produces zero tyre force. The grip multiplier combines surface grip
 and tyre condition. Acceleration/braking and turning share one force budget:
@@ -133,11 +145,37 @@ The 0.12-second roll response is a provisional settling approximation, not a
 spring/damper or body-roll solver. It uses the previous substep's filtered force.
 Airborne contact clears its history; wheel loads and forces vanish.
 
+The optional Indianapolis body prototype replaces both transfer filters with
+reduced roll/pitch modes. For each angle q, `I*q_ddot = M-K*q-C*q_dot`, with
+`C = 2*zeta*sqrt(K*I)`. Contact force times CG height supplies M; spring plus
+damper reaction supplies the transferred moment. Pitch reaction divided by
+wheelbase replaces longitudinal transfer, while roll reaction replaces the
+moment split by front roll balance. The existing load clamps remain. Mass
+scales the body inertias as fuel changes. States advance semi-implicitly at
+the existing substep cadence, and clear on reset or loss of ground contact.
+The chassis and cockpit follow the angles; wheels retain road alignment.
+This constrained prototype has no heave or independent wheel travel.
+See [Indy test notes](indy_suspension_test.txt) for source and tuning details.
+
+The newer Indianapolis travel stage replaces that constrained support with
+four physical road samples and sprung-body heave/roll/pitch integration.
+Corner compression and relative velocity supply spring/damper reactions;
+coupling springs retain the authored modal stiffnesses and front roll share.
+Only positive normal forces from reachable road contacts enter tyre loads.
+These replace the axle transfer calculation, rather than augmenting it.
+Downforce and road-normal banking support excite heave. Aero axle moments
+also produce pitch trim, and changing road-plane angles excite body modes.
+The suspension moves the actual body vertically with floor snapping and
+surface-step lifting disabled; the upright collider remains a collision
+backstop. Unchecking **Heave and wheel travel** restores the equations above.
+See [travel equations and limitations](indy_suspension_travel.txt).
+
 The split conserves each axle's load and clips at zero inside-wheel load. Beyond
 wheel lift it does not redistribute excess roll moment or simulate rollover.
 There is no suspension travel, roll-centre geometry, unsprung mass, camber,
-left/right contact sampling, or yaw moment from unequal longitudinal wheel
-forces. See [tyre loads and roll balance](tyre_loads.md) for setup and validation.
+left/right physical surface sampling. The model includes
+yaw moments from unequal longitudinal wheel forces. See [tyre loads and roll
+balance](tyre_loads.md) for setup and validation.
 
 Fuel mass uses US gallons converted to litres times fuel density. Consumption
 uses distance, configured range and a burn factor; it does not integrate engine
@@ -175,10 +213,11 @@ assigned to force a match. The blip ends before clutch reconnection; normal engi
 braking remains. Manual shifts retain their existing clutch and throttle behaviour.
 Manual and automatic gear selection share direction-change and over-rev checks.
 
-Tyre reaction torque changes axle angular speed; rear drive torque accelerates
-the driven axle. Brake input moves each axle speed toward zero using brake
-force, bias, rolling radius and axle inertia. Traction and anti-lock assists can
-then directly correct axle speeds. There are no independently driven rear wheels.
+Tyre reaction torque changes each wheel's angular speed. Rear drive torque and
+service brake torque are split equally between sides. The bounded differential
+clutch transfers equal and opposite torque between the rear wheels. Traction
+and anti-lock assists directly correct individual wheel speeds using each
+wheel's contact velocity.
 
 ## Aero and resistance
 
@@ -206,8 +245,10 @@ resistance to obtain `Fx` and `Fy`. Before assistance:
 ```text
 du/dt = Fx/mass + gravity_forward + v*r
 dv/dt = Fy/mass + gravity_left - u*r
-dr/dt = (a*front_force_body_y - b*rear_force_y)/yaw_inertia
+dr/dt = (a*front_force_body_y - b*rear_force_y + track_yaw_moment)/yaw_inertia
 ```
+
+`track_yaw_moment` sums `−y_i*Fx_body_i` for all four wheels. Front forces are rotated into body axes first.
 
 Each Euler step retains the previous `u` for the lateral rotating-frame term.
 These equations describe the force-driven part; additional handling interventions

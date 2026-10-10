@@ -10,20 +10,25 @@ textures and scenery are not included.
 
 | Section | Banking | Racing width |
 | --- | --- | --- |
-| Each of the four turns | 9.2 degrees | 60 ft / 18.288 m |
-| Long straights and short chutes | 0 degrees | 50 ft / 15.24 m |
+| Each of the four turns | Up to 9.266607 degrees | Up to 60 ft / 18.288 m |
+| Short chutes | About 4.214 degrees at their midpoints | 50 ft / 15.24 m |
+| Long straights | 0 degrees away from transitions | 50 ft / 15.24 m |
 
 Widths are horizontal, excluding the apron. A **provisional 12 ft / 3.6576 m
 flat apron** is provided throughout; the user supplied no Indianapolis apron
 dimension. The inner racing edge anchors the bank at ground height.
 
-Each roughly 403 m turn has 220 m quintic banking transitions, starting 40 m
-before entry and ending 40 m after exit. This reaches full banking about 180 m
-into the turn, with a short plateau around the apex. The short chutes retain
-about 121 m of flat road between transitions. Width changes follow the same
-smooth profile. This adapts the gradual Texas/Michigan approach to Indy's
-shorter individual corners without losing the specified maximum banking.
-Visual and collision geometry share the same approximately 2 m samples.
+Banking follows the user's extracted ICR2 `banking_profile.csv`, with linear
+interpolation between its 1,582 samples. Source distances are scaled from
+13,200.3335 ft to the track's 4,023.36 m lap, matching the TRK plan scaling.
+This includes the wider full-bank plateaus, banked short chutes, and slight
+negative entry camber (minimum about -0.1573 degrees). The source CSV and its
+SHA-256 hash are preserved in the package and `source.json` for reproducible builds.
+Horizontal width changes retain the existing 220 m quintic transitions,
+starting 40 m before turns and ending 40 m after them. The flat apron remains
+anchored to the inner racing edge. Visual and collision geometry share the
+same approximately 2 m samples, and AI reference/groove/corridor heights are
+regenerated from that banking.
 
 MIN/MAX bounds map to car-centre limits 1.7 m from each road edge. RACE preserves
 its relative lateral position between those limits, with 12 m smoothing. Passing
@@ -108,8 +113,8 @@ godot --path . --script tools/capture_indianapolis_grandstands.gd
 ```
 
 Validated with Godot 4.7.2: requested widths, apron dimensions, closed seams,
-AI clearance, collision banks in all four turns, flat long straights and short
-chutes, formation reaching green, two AI cars completing laps, and pit service
+AI clearance, collision banks in all four turns, flat long straights,
+formation reaching green, two AI cars completing laps, and pit service
 followed by rejoin. The preview capture saves overview and banking images in
 `tmp`. Full-field endurance and player handling calibration remain untested.
 The sandbox run also reports unavailable player telemetry output and engine
@@ -117,10 +122,28 @@ certificate-store/shutdown warnings; these do not fail the track checks.
 
 The generator writes data only; the scene and renderer are hand-authored.
 
+Banking update (10 October 2026): replaced the authored banking ramps with
+the supplied ICR2 profile. All 2,013 road cross-sections match the interpolated
+CSV within 0.000021 degrees. Road/AI horizontal coordinates and imported speeds
+are preserved. AI corner marker heights follow the rebuilt groove. Godot
+collision probes confirm the four turn plateaus and both banked short chutes.
+The runtime check covers formation, two AI cars completing laps, pit service,
+and rejoin; the banking preview was rendered and visually reviewed.
+
 Grandstand validation: rendered the integrated scene with static batching,
 checked all 16 sections and absence of added collision bodies, and visually
 reviewed frontstretch, track-level, north/south vista and overview captures.
 Images are saved as `tmp/indianapolis_stands_*.png`.
+
+Runtime road collision optimization (10 October 2026): `road_collision.gd`
+reduces straight, level eight-quad ribbons to two triangles where their edges
+are collinear within 0.1 mm and area/winding checks pass. It uses the mesh's
+actual collision vertices. Other strips retain their original faces, including
+all 18,910 banked/transition triangles. The road collider falls from 32,192 to
+25,892 triangles; the visible mesh, apron, pit road and barriers are unchanged.
+`tools/validate_indy_road_collision.gd` checks 40,240 support/edge rays against
+the original collider. See `docs/indy_practice_profile_2026_10_10.md` for timing
+results and the repeatable exported-game benchmark.
 
 Pit-layout validation (30 September 2026): geometry checks pass for continuous
 paving, wall dimensions/seam and pylon placement. The runtime probe passed

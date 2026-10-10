@@ -49,8 +49,8 @@ Source: [tires.cfg](../content/vehicles/open_wheel/physics/tires.cfg).
 | `front_cornering_stiffness_n_rad`, `rear_cornering_stiffness_n_rad` | 90000, 110000 N/rad | Per-axle lateral response before saturation; higher stiffness reaches a given force at less slip angle. |
 | `longitudinal_stiffness_n` | 90000 N per unit slip | Longitudinal force response before saturation. |
 | `reference_load_n`, `load_stiffness_exponent` | 3500 N, 0.85 | Reference and exponent for load-dependent stiffness. |
-| `friction_coefficient` | 1.65 | Friction coefficient at reference load. |
-| `load_grip_exponent` | 0.98 | Sublinear peak force versus load; 1 disables peak load sensitivity. |
+| `friction_coefficient` | 1.749509 | Zero-load friction; reduced by the ICR2 load polynomial per tyre. |
+| Load sensitivity | Polynomial | Provisional 0.469078 native units/N; fronts use 1.1 times load. See `bicycle_model.gd`. |
 | `sliding_grip_fraction` | 0.85 | Force retained at large combined slip, relative to peak. |
 | `post_peak_falloff` | 2.0 | Falloff width in normalized force demand; larger values soften breakaway. |
 | `grass_grip_multiplier` | 0.48 | Surface grip factor, multiplied by tyre-condition grip. |

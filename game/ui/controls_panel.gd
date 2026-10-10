@@ -5,7 +5,7 @@ var shell: Control
 var wheel_host: MarginContainer
 var wheel_panel: PanelContainer
 var menu_wheel: CanvasLayer
-var handling_choice: OptionButton
+var differential_fields: Array[SpinBox] = []
 
 func _ready() -> void:
 	size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -30,7 +30,8 @@ func _ready() -> void:
 	title.text = "DRIVING & CAMERA"
 	title.add_theme_font_size_override("font_size",18)
 	help.add_child(title)
-	_add_handling_option(help)
+	if is_instance_valid(practice) and practice.player.physics_ready:
+		_add_rear_differential(help)
 	if is_instance_valid(practice) and practice.player.physics_ready:
 		_add_driving_assists(help)
 	var guide := Label.new()
@@ -45,33 +46,35 @@ func _ready() -> void:
 	layout.add_child(wheel_host)
 	call_deferred("_embed_wheel_setup")
 
-func _add_handling_option(parent: Control) -> void:
+func _add_rear_differential(parent: Control) -> void:
+	var sim = practice.player.sim
 	var heading := Label.new()
-	heading.text = "PLAYER HANDLING"
+	heading.text = "REAR DIFFERENTIAL (SESSION)"
 	parent.add_child(heading)
-	var choice := OptionButton.new()
-	handling_choice = choice
-	choice.name = "HandlingModel"
-	choice.add_item("Current handling", 0)
-	choice.add_item("Experimental handling", 1)
-	choice.add_item("Experimental: free front wheels", 2)
-	_sync_handling_choice(DrivingOptions.experimental_handling)
-	parent.add_child(choice)
+	for field in [["RearDiffDrive","Drive locking (%)",sim.rear_diff_drive_lock*100,100],
+		["RearDiffCoast","Coast locking (%)",sim.rear_diff_coast_lock*100,100],
+		["RearDiffPreload","Preload (Nm)",sim.rear_diff_preload_nm,sim.MAX_REAR_DIFF_PRELOAD_NM]]:
+		var row := HBoxContainer.new()
+		parent.add_child(row)
+		var caption := Label.new()
+		caption.text = field[1]
+		caption.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(caption)
+		var amount := SpinBox.new()
+		amount.name = field[0]
+		amount.min_value = 0
+		amount.max_value = field[3]
+		amount.step = 5
+		amount.value = field[2]
+		differential_fields.append(amount)
+		amount.value_changed.connect(func(_value: float):
+			sim.set_rear_differential(differential_fields[0].value/100,differential_fields[1].value/100,differential_fields[2].value)
+		)
+		row.add_child(amount)
 	var hint := Label.new()
-	hint.text = "Saved for future sessions.\nExperimental handling changes cornering balance.\nChoose Current handling to switch back."
+	hint.text = "Drive: power applied. Coast: engine braking.\nMore locking limits rear wheel-speed difference.\nAll three at 0 = open; defaults are 30 / 10 / 20."
 	hint.add_theme_font_size_override("font_size",13)
 	parent.add_child(hint)
-	DrivingOptions.handling_changed.connect(_sync_handling_choice)
-	choice.item_selected.connect(func(index: int):
-		var error := DrivingOptions.set_experimental_handling(index > 0, index == 2)
-		if error != OK:
-			_sync_handling_choice(DrivingOptions.experimental_handling)
-			hint.text = "Could not save handling selection."
-	)
-
-func _sync_handling_choice(enabled: bool) -> void:
-	if is_instance_valid(handling_choice):
-		handling_choice.select((2 if DrivingOptions.independent_front_rotation else 1) if enabled else 0)
 
 func _add_driving_assists(parent: Control) -> void:
 	var heading := Label.new()

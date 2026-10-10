@@ -1,0 +1,19 @@
+[remap]
+
+importer="csv_translation"
+type="Translation"
+uid="uid://bdkdiiqvqf2ns"
+
+[deps]
+
+files=["res://docs/plots/proposed_tyre_load_dropoff.current.translation", "res://docs/plots/proposed_tyre_load_dropoff.proposed.translation", "res://docs/plots/proposed_tyre_load_dropoff.proposed.translation", "res://docs/plots/proposed_tyre_load_dropoff.current.translation", "res://docs/plots/proposed_tyre_load_dropoff.proposed.translation", "res://docs/plots/proposed_tyre_load_dropoff.proposed.translation"]
+
+source_file="res://docs/plots/proposed_tyre_load_dropoff.csv"
+dest_files=["res://docs/plots/proposed_tyre_load_dropoff.current.translation", "res://docs/plots/proposed_tyre_load_dropoff.proposed.translation", "res://docs/plots/proposed_tyre_load_dropoff.proposed.translation", "res://docs/plots/proposed_tyre_load_dropoff.current.translation", "res://docs/plots/proposed_tyre_load_dropoff.proposed.translation", "res://docs/plots/proposed_tyre_load_dropoff.proposed.translation"]
+
+[params]
+
+compress=1
+delimiter=0
+unescape_keys=false
+unescape_translations=true

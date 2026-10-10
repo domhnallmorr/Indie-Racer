@@ -1,0 +1,180 @@
+ICR2 tyre efficiency and slip falloff - 10 October 2026
+
+Finding
+
+The identified executable contains strong static evidence for both a decreasing
+load-dependent tyre response and a separate post-peak slip response. This is
+more specific than the earlier stagger trace, but it is not yet an SI-calibrated
+reconstruction of the whole tyre force law. Gameplay has not been changed.
+
+Source
+
+INDYCAR.EXE, 1,142,387 bytes; SHA256:
+83ccee7341b31ce2fdebfb453dfaaf443c1e80687693e6ba4b71a71dd8256267
+Embedded MZ: file 0x26654; LE header: 0x28C9C.
+Code pages: file 0x67454, preferred code base 0x10000.
+Initialized data: file 0xF1454. Data offsets below are object-relative.
+The original executable was read only; it was not run or modified.
+
+1. Load-dependent response
+
+Code 0x1605C..0x1610B constructs four quantities at data offsets
+0x870C, 0x870E, 0x8710 and 0x8712. It adds/subtracts paired transfer quantities
+from four baseline contributions and clips negative results to zero. Code
+0x174D9 multiplies the same quantities into subsequent wheel calculations.
+These observations strongly support interpreting them as individual wheel loads.
+Their intrinsic SI units remain unverified. Section 4 describes a static-weight
+normalization that permits a conditional comparison with our recorded loads.
+
+At 0x15498..0x154CD, wheel indices 0/1 pass these values to function 0x19690;
+indices 2/3 pass through 0x196DC, which first multiplies load by 1100/1000.
+Results are stored in the four words at 0x25C7C.
+
+The integer arithmetic in 0x19690 is:
+
+  E(L) = max(5000,
+             64554 - trunc(2950*L/1000) - trunc(4915*L*L/10000000))
+
+L is read from the unsigned low 16 bits. The formula above applies to the
+nonnegative signed 16-bit wheel-load domain (0..32767); arbitrary larger inputs
+can encounter different signed-overflow behaviour. Positive divisions truncate
+downward.
+The adapter for indices 2/3 uses the low 16 bits of trunc(1100*L/1000).
+
+Internal L     E(L)       Relative to E(0)
+0              64554      100.00%
+1000           61113       94.67%
+2000           56688       87.81%
+3000           51281       79.44%
+4000           44890       69.54%
+5000           37517       58.12%
+6000           29160       45.17%
+
+These are INTERNAL loads, not newtons or pounds.
+
+The resulting coefficient is consumed by the slip-table interpolation at
+0x1929C and by the combined response limiter at 0x195CA. At 0x172AC and
+0x172B5 the coefficient and original wheel load are both passed to 0x195A4.
+That routine limits a two-component magnitude and multiplies outputs by load
+at 0x1961C and 0x19647. Thus the polynomial is part of the running tyre response,
+not merely a menu, display, or unused constant. It affects response width and
+combined limiting; it should not be copied blindly as a standalone friction
+coefficient without reconstructing the surrounding calculations.
+
+2. Post-peak slip response
+
+The unsigned-word table at data offset 0x82D0 begins:
+
+0, 16000, 30000, 42000, 52000, 60000, 64000,
+65535, 65535, 65535, 65535, 64000, 60000, 55000,
+50000, 45000, 42000, 41000, 40000, 40000
+
+Code 0x192B7..0x19332 divides an angle-like magnitude by the per-wheel
+polynomial coefficient, obtains a table index and fractional byte, linearly
+interpolates adjacent entries, and scales by that coefficient. The result is
+also multiplied by another wheel response factor and bounded. At very large
+angles, or sufficiently low polynomial coefficients, 0x192AC selects the table
+entry at 0x82F4 directly: 40000.
+
+The table therefore has a clear peak and a lower response beyond the peak.
+The table tail/peak ratio is 40000/65535 = 61.036%. That ratio describes this
+table, not a universal measured kinetic/static friction ratio. Surrounding
+limits, wheel factors and combined longitudinal/lateral response still matter.
+
+3. Comparison with the Godot model
+
+Our model uses peak force proportional to load^0.98. Doubling load reduces
+effective friction by only 2^-0.02, about 1.38%. Its asymptotic post-peak force
+is 85% of peak. The executable contains substantially stronger declining
+response mechanisms than those two choices suggest, but the internal load
+conversion must be established before comparing at an actual Indy wheel load.
+
+Load sensitivity concerns available grip as vertical load increases. Slip
+falloff concerns delivered force after exceeding the slip peak. Stronger slip
+falloff alone would not remove excess reserve in a corner below the peak.
+
+Reproduction
+
+python tools/analyse_icr2_tyres.py PATH_TO_INDYCAR.EXE
+
+Requires Capstone; the existing tmp/icr2_analysis/vendor copy is supported.
+The tool checks the executable hash and LE layout, extracts fresh disassembly,
+checks the exact table, verifies sample polynomial values and monotonicity,
+saves tmp/icr2_analysis/tyre_binary_trace.json, and rechecks the source hash.
+
+4. Follow-up: force scaling and Indy telemetry comparison
+
+The pure-lateral force path is now traced far enough to reconstruct a baseline
+plateau. At 0x192B7..0x19332 the interpolated response is multiplied by E(L),
+shifted right 16, then multiplied by the selected compound response factor and
+shifted right 16 again. The baseline compound table at data 0x8574 contains
+58200, 56700, 55100, 58200. Other setup paths contain different factors, so
+58200 must not be assumed to describe every ICR2 setup.
+
+With zero longitudinal request and the slip table at its peak, the response is:
+
+  R = floor(floor(E(L_curve)*65535/65536)*compound/65536)
+  F_native = floor(2*R*L/65536)
+
+The final routine stores signed 16-bit outputs. The recorded comparison remains
+well inside the corresponding output range. Code 0x195A4 applies its combined
+limiter before this final multiplication. Its pure-lateral plateau does not
+reach that limiter, because the compound-scaled response is below E.
+
+This establishes that E affects actual peak force, not only the width of the
+slip response. The driven-torque path in 0x193AC and the earlier stagger trace
+identify indices 0/1 as the rear pair; indices 2/3 use the 1.1 load adapter and
+are treated as the fronts. Left/right native index identity is not needed for
+this capacity comparison.
+
+Mass and static load tracing:
+- Car profile selection at 0x135E0 reads a dry-mass field of 7500 (other profiles
+  have 7550) into data 0x8794.
+- The fuel setter at 0x13840..0x1389F converts hundredths of a gallon into mass;
+  the getter at 0x138A0 reverses it. This implies 32 native mass units/gallon.
+- The running path at 0x16F4A adds remaining fuel mass to dry mass.
+- At 0x14C67..0x14CD7 the flat static support contribution is approximately
+  mass*110/256, distributed by the wheel-load fractions.
+
+For comparison, match that native static weight to the recorded physical
+weight. This deliberately does not claim an intrinsic native-unit/newton
+conversion:
+
+  units_per_N = ((7500 + 32*fuel_gal)*110/256)/(recorded_mass_kg*9.81)
+  L = round(recorded_wheel_load_N*units_per_N)
+
+Run: practice_2026-10-10T11-07-22_8338.csv, front wing 13 degrees, rear about
+4.05 degrees. Selected 2654 grounded rear-differential corner samples with
+340 < speed < 375 km/h, 12 < abs(yaw rate) < 30 degrees/s and abs(rear slip)
+< 8 degrees. Median capacities and demands, compound factor 58200:
+
+Wheel   Recorded Fz   Current peak   Recovered baseline   Current usage   Demand/baseline
+FL      2688 N        4382 N         4334 N               70%             71%
+FR      7637 N        12197 N        9374 N               62%             81%
+RL      4226 N        6829 N         6500 N               78%             82%
+RR      9330 N        14846 N        10676 N              70%             97%
+
+Each column is its own sample median; ratios are calculated per sample first.
+Demand is sqrt(Fx^2+Fy^2), compared to pure-lateral baseline capacity. A full
+combined-slip reconstruction could change the available capacity. The inside
+tyres are similar; the outside front/rear capacities fall by about 23%/28%.
+This supports investigating stronger load sensitivity as the explanation for
+excess reserve at Indy, particularly at the outside rear.
+
+Verification:
+tools/fixtures/icr2_integer_core.py interprets a bounded whitelist of actual
+extracted integer instructions; it never launches the original DOS program.
+Checks agree with the reconstructed polynomial over representative physical
+loads, the second-pair adapter, and the final pure-lateral force multiplication
+for three baseline compound factors. It does not emulate the full slip routine
+or validate every physical assumption in the normalization.
+
+Reproduce the comparison:
+python tools/analyse_icr2_tyre_capacity.py PATH_TO_INDYCAR.EXE PATH_TO_TELEMETRY.csv
+Output: tmp/icr2_analysis/tyre_capacity_comparison.json, including fresh trace
+extracts. The source hash is checked before and after inspection.
+
+Enough evidence exists for a controlled load-sensitivity experiment. This is
+not yet a faithful port: intrinsic SI conversion, setup/compound selection,
+temperature, wear, surface effects and complete combined slip remain unresolved.
+No gameplay constants or default physics were changed in this investigation.

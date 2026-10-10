@@ -2,6 +2,7 @@ extends "res://game/ai/oval_driver.gd"
 ## ICR2-inspired reference speeds plus collision-aware kinematic path following.
 ## Reuses departure geometry, merge checks and progress tracking, not tyre physics.
 var reference_speeds := PackedFloat64Array()
+var tactical_speeds := PackedFloat64Array()
 var pace_scale := 1.0
 var reference_lap_s := 0.0
 var base_lap_target_s := 0.0
@@ -75,6 +76,17 @@ func configure(vehicle: Node3D, race_data: Dictionary, delay: float, record_tele
 		reference_speeds.append(value)
 		reference_peak_speed = maxf(reference_peak_speed,value)
 		reference_min_speed = minf(reference_min_speed,value)
+	if profile.has("tactical_speed_mps"):
+		if profile.tactical_speed_mps.size() != race.size():
+			profile_error = "Tactical speed profile does not match racing line"
+			push_error(profile_error)
+			return
+		for value in profile.tactical_speed_mps:
+			if not (value is float or value is int) or not is_finite(value) or value <= 0:
+				profile_error = "Invalid tactical reference speed"
+				push_error(profile_error)
+				return
+			tactical_speeds.append(value)
 	pit_profile = pit
 	for key in ["steering_lookahead_base_m","steering_lookahead_time_s","steering_lookahead_max_m"]:
 		var value = profile.get(key,get(key))
@@ -271,12 +283,19 @@ func _planned_speed() -> float:
 	var clean_air_speed := _scaled_reference_speed(lerpf(reference_speeds[index],reference_speeds[(index+1)%race.size()],fraction))
 	var lane_factor := racecraft.speed_factor()
 	var result := clean_air_speed*lane_factor
-	if mode != Mode.RACING or car.slipstream_speed_fraction < .00001:
+	# Side-room protection can displace RACE even with lane == 0. It needs
+	# the same conservative envelope as an explicitly selected passing path.
+	var tactical: bool = not tactical_speeds.is_empty() and (maxf(absf(racecraft.lane),absf(racecraft.target_lane)) > .01 or racecraft.launch_weight > 0.0 or racecraft._side_room_bounds(self).z > 0.0)
+	if tactical:
+		result = minf(result,_scaled_reference_speed(lerpf(tactical_speeds[index],tactical_speeds[(index+1)%race.size()],fraction)))
+	if mode != Mode.RACING or (car.slipstream_speed_fraction < .00001 and tactical_speeds.is_empty()):
 		return result
 	# Only increase straight-line pace. Preview the same profile ahead so the
 	# tow cannot delay braking for a bend or override lane-change speed factors.
 	var tow: float = car.slipstream_speed_fraction
 	result *= 1.0+tow*tow_straight_weights[index]
+	if tactical:
+		result = minf(result,_scaled_reference_speed(lerpf(tactical_speeds[index],tactical_speeds[(index+1)%race.size()],fraction)))
 	var horizon: float = car.speed_mps*car.speed_mps/(2.0*car.braking_limit)+car.speed_mps*.5+braking_margin_m
 	var distance := -fraction*segment.length()
 	# Fuel, tyre condition and lane commitment are constant across this lookup.
@@ -292,6 +311,8 @@ func _planned_speed() -> float:
 		if distance > horizon:
 			break
 		var future := reference_speeds[at]*(pace_scale+pace_delta*tow_pace_weights[at])*scale*(1.0+tow*tow_straight_weights[at])
+		if tactical:
+			future = minf(future,_scaled_reference_speed(tactical_speeds[at]))
 		result_squared = minf(result_squared,future*future+braking*maxf(0.0,distance-margin))
 	return sqrt(result_squared)
 

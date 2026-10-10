@@ -34,7 +34,8 @@ hashes and the precise derivation are recorded in `source.json`.
 
 - Flat road elevation. Widths are inferred from the MIN/MAX car-centre limits,
   with 1.9 m edge clearance and the existing 13.6 m minimum. The rebuilt road
-  ranges from 13.6 to 15.04 m. These are not surveyed road edges.
+  ranges from 13.2 to 15.04 m after the local second-chicane revision described
+  below. These are not surveyed road edges.
 - Concrete barriers, red/white kerbs, fencing, distance boards, finish
   gantry, grandstands, palms, beach, ocean and stylised hotels are newly authored.
   The city is an approximation, not a building-by-building 1995 reconstruction.
@@ -76,6 +77,42 @@ not surveyed or a claim of an exact historical reconstruction.
 `tmp/surfers_t1_broadcast.png` and `tmp/surfers_chicane.png` show the result.
 The pre-landscape package is saved in `tmp/surfers_before_t1_landscape/`.
 
+## Second-chicane road revision
+
+The user's race still and annotated game screenshot guide a deeper inside
+grass island and a stronger change of direction. Between source stations
+630–770 m, the road shifts laterally by up to 9 m and narrows gently to 13.2 m
+at the apex. The old fast groove now crosses the grass island; it is no longer
+an uninterrupted asphalt line. Low red/cream kerbs outline the island, and
+independent barriers, fencing and paved margins cover the wider 600–805 m
+street envelope. The exact profile is an authored approximation from the images.
+
+The racing line, both passing paths, physical corridor, reference/pace path
+and corner markers are synchronised. Main-line pace retains the player-derived
+profile elsewhere, with local curvature/yaw limits and a braking/exit ramp
+for this corner. The apex target is approximately 74 km/h, compared with
+157 km/h in the earlier recording; this is an AI target, not a tested player
+gear or maximum corner speed. The main-line override affects approximately
+574–952 m including braking and acceleration. The more conservative tactical
+exit ramp extends to approximately 1144 m. Original pre-edit speed arrays
+are saved in the profile, making repeated rebuilds deterministic.
+
+Use `--update-second-chicane` to regenerate this layout and its local pace
+override while preserving other settings. Later scenery-only rebuilds still
+use `--geometry-only`; that mode rejects a road/AI mismatch rather than leaving
+stale paths. Source station indices and timing gates remain stable. The rest
+of the road and the actual pit route are unchanged, as are the oval packages
+and shared AI/physics code.
+
+Geometry, corridor projections, grass grip, kerb crossing and wall collisions
+pass. Physics ray probes confirm that 19 samples of the former groove hit
+grass while the new groove stays on asphalt. Preview:
+`tmp/surfers_second_chicane.png`. Backup:
+`tmp/surfers_before_second_chicane/`.
+The final two-car run completed two timed laps per car (111.07 s and 109.06 s
+best), with zero wall/car contact ticks and 1.33 m peak line error. Pit service
+and rejoin passed. Repeating the local-layout rebuild produced identical JSON.
+
 ## Backstraight chicane verges
 
 The long backstraight complex at 2790–3100 m now has the same treatment:
@@ -95,10 +132,78 @@ These checks pass. The two-car practice test also completed two timed laps
 each with zero wall/car contacts and 1.05 m peak line error; pit service and
 rejoin passed. Barrier clearance was checked throughout the new grass zone.
 
+## Final-turn apex verge
+
+The user-supplied 1995 final-turn still guides a new inside verge at
+3825–4028 m. The wall eases back through the tight entry arc, reaching a
+13 m setback at the broader apex before tapering back on the exit, ahead
+of the existing pit opening. A grass wedge follows the inside road edge,
+with the same 1.45 m wide, 6 cm high ramped red/cream kerb used at the chicanes.
+Catch fencing follows the moved wall, with a narrow paved margin behind the
+grass. Nearby inside palms are cleared. Dimensions are an authored approximation.
+
+The racing surface, outside wall, pit geometry and prior chicane landscaping
+remain unchanged. All AI and session JSON files, including the newer
+telemetry-derived pace reference, are preserved byte for byte. The landscape
+validator checks the new grass grip, kerb crossing and barrier collision.
+Those checks pass. The two-car circulation test completed two timed laps each
+(105.08 s and 103.14 s best), with no wall/car contact ticks and 1.23 m peak
+tracking error. Pit service and rejoin also passed with the preserved pace profile.
+The preview is `tmp/surfers_final_turn.png`; the previous package and builder
+are saved in `tmp/surfers_before_final_turn_landscape/`.
+
+For scenery changes, use `--geometry-only` to preserve tuned AI profiles and
+session data. This option requires the existing package's matching source files.
+
+## Final-turn landmark tower
+
+A custom white tower replaces the placeholder nearest the final-turn approach.
+The user's Google Maps front and aerial screenshots supply the rounded balcony
+ends, recessed glazing and repeated white fascia. The extended model has two
+angled 22-storey blocks joined by a taller, blank central facade with rounded
+vertical piers. Separate roof terraces and pools, a pergola and central service
+roof make the two-wing footprint visible from above. The low garden wall,
+hedge, broad-canopied front tree and two curved street lights remain in place.
+Its frontage faces the circuit from behind the outside barrier. The modern
+references inform an authored model rather than establishing the exact 1995
+facade or dimensions.
+
+`landmark_tower.gd` builds a small set of meshes grouped by material, compatible
+with the existing static scenery batching. No downloaded textures are needed.
+`geometry.json` stores its placement and capture camera. The road, kerbs,
+grass patches, walls, AI profiles and session data are unchanged by this pass.
+Previews: `tmp/surfers_landmark_view.png` and `tmp/surfers_landmark_aerial.png`.
+The expanded footprint was checked for road clearance, and all driving meshes,
+AI and session data remain unchanged. Previous packages:
+`tmp/surfers_before_landmark/` and `tmp/surfers_before_twin_wing_landmark/`.
+
+## Main-straight grandstands
+
+Six separate open stands line the outside of the main straight opposite the
+pits. Five are 64 m long, twice the mile oval's 32 m stand, with seating lowered
+from 9 m to 7 m and the same 18 m depth. The final stand is 112 m long and
+centred on the finish stripe, extending 56 m either side. It replaces the old
+small stand beyond the finish. Gaps between the new stands remain at least 16 m.
+
+`main_straight_stands.gd` reuses the mile oval's mesh builder and crowd atlas
+without changing the oval. Crowd bays repeat across the extra length. Each
+ordinary stand has five coloured flags; the finish stand has seven. Their
+cloth uses the existing wind shader and remains outside static batching, while
+the seating and poles can be batched. All 32 flags were verified in the running
+scene, including visible animation between captured frames. Nearby buildings
+and palms are cleared from the stand footprints.
+
+The six footprints, road clearance, seven-metre seating height and finish-line
+alignment were checked. Driving geometry, AI and session files are unchanged.
+Previews: `tmp/surfers_main_straight_view.png` and
+`tmp/surfers_finish_stand_view.png`. Previous package:
+`tmp/surfers_before_main_stands/`.
+
 ## Rebuild and validate
 
 ```powershell
 python tools/build_surfers_paradise.py 'PATH_TO_SURFERS_FOLDER'
+python tools/build_surfers_paradise.py 'PATH_TO_SURFERS_FOLDER' --geometry-only
 python tools/validate_surfers_paradise.py
 godot --headless --path . --script tools/validate_surfers_player.gd
 godot --headless --path . --script tools/validate_surfers_corridor.gd
